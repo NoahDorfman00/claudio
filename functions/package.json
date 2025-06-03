@@ -1,0 +1,14 @@
+{
+    "name": "claudio-functions",
+    "description": "Firebase Functions for Claudio AI Chatbot",
+    "main": "index.js",
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.52.0",
+        "cors": "^2.8.5",
+        "firebase-functions": "^4.0.0",
+        "node-fetch": "^2.6.7"
+    },
+    "engines": {
+        "node": "18"
+    }
+}

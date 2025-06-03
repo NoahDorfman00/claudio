@@ -1,0 +1,72 @@
+[debug] [2025-06-02T16:34:51.789Z] ----------------------------------------------------------------------
+[debug] [2025-06-02T16:34:51.791Z] Command:       /Users/noahdorfman/.nvm/versions/node/v23.6.1/bin/node /Users/noahdorfman/.nvm/versions/node/v23.6.1/bin/firebase deploy --only functions
+[debug] [2025-06-02T16:34:51.791Z] CLI Version:   14.2.2
+[debug] [2025-06-02T16:34:51.791Z] Platform:      darwin
+[debug] [2025-06-02T16:34:51.791Z] Node Version:  v23.6.1
+[debug] [2025-06-02T16:34:51.792Z] Time:          Mon Jun 02 2025 12:34:51 GMT-0400 (Eastern Daylight Time)
+[debug] [2025-06-02T16:34:51.792Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-06-02T16:34:51.879Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-06-02T16:34:51.879Z] > authorizing via signed-in user (n.dorfman00@gmail.com)
+[debug] [2025-06-02T16:34:51.879Z] [iam] checking project claudio-13341 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2025-06-02T16:34:51.880Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:51.880Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:51.880Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341:testIamPermissions [none]
+[debug] [2025-06-02T16:34:51.880Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341:testIamPermissions x-goog-quota-user=projects/claudio-13341
+[debug] [2025-06-02T16:34:51.880Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2025-06-02T16:34:52.121Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341:testIamPermissions 200
+[debug] [2025-06-02T16:34:52.122Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2025-06-02T16:34:52.122Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.122Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.122Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/claudio-13341/serviceAccounts/claudio-13341@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2025-06-02T16:34:52.122Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/claudio-13341/serviceAccounts/claudio-13341@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2025-06-02T16:34:52.277Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/claudio-13341/serviceAccounts/claudio-13341@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2025-06-02T16:34:52.277Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/claudio-13341/serviceAccounts/claudio-13341@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[info] 
+[info] === Deploying to 'claudio-13341'...
+[info] 
+[info] i  deploying functions 
+[debug] [2025-06-02T16:34:52.281Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.281Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.281Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341 [none]
+[debug] [2025-06-02T16:34:52.388Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341 200
+[debug] [2025-06-02T16:34:52.388Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/claudio-13341 {"projectNumber":"573081656715","projectId":"claudio-13341","lifecycleState":"ACTIVE","name":"claudio","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2025-05-31T21:46:46.543133Z"}
+[info] i  functions: preparing codebase default for deployment 
+[info] i  functions: ensuring required API cloudfunctions.googleapis.com is enabled... 
+[debug] [2025-06-02T16:34:52.390Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.390Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.390Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.391Z] Checked if tokens are valid: true, expires at: 1748885559806
+[info] i  functions: ensuring required API cloudbuild.googleapis.com is enabled... 
+[debug] [2025-06-02T16:34:52.391Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.391Z] Checked if tokens are valid: true, expires at: 1748885559806
+[info] i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled... 
+[debug] [2025-06-02T16:34:52.391Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.391Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.391Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudfunctions.googleapis.com [none]
+[debug] [2025-06-02T16:34:52.391Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudfunctions.googleapis.com x-goog-quota-user=projects/claudio-13341
+[debug] [2025-06-02T16:34:52.394Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/runtimeconfig.googleapis.com [none]
+[debug] [2025-06-02T16:34:52.394Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/runtimeconfig.googleapis.com x-goog-quota-user=projects/claudio-13341
+[debug] [2025-06-02T16:34:52.395Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudbuild.googleapis.com [none]
+[debug] [2025-06-02T16:34:52.395Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudbuild.googleapis.com x-goog-quota-user=projects/claudio-13341
+[debug] [2025-06-02T16:34:52.395Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/artifactregistry.googleapis.com [none]
+[debug] [2025-06-02T16:34:52.396Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/artifactregistry.googleapis.com x-goog-quota-user=projects/claudio-13341
+[debug] [2025-06-02T16:34:52.833Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/artifactregistry.googleapis.com 200
+[debug] [2025-06-02T16:34:52.833Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/artifactregistry.googleapis.com [omitted]
+[info] ✔  artifactregistry: required API artifactregistry.googleapis.com is enabled 
+[debug] [2025-06-02T16:34:52.835Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudfunctions.googleapis.com 200
+[debug] [2025-06-02T16:34:52.835Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudfunctions.googleapis.com [omitted]
+[info] ✔  functions: required API cloudfunctions.googleapis.com is enabled 
+[debug] [2025-06-02T16:34:52.836Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/runtimeconfig.googleapis.com 200
+[debug] [2025-06-02T16:34:52.836Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/runtimeconfig.googleapis.com [omitted]
+[debug] [2025-06-02T16:34:52.836Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudbuild.googleapis.com 200
+[debug] [2025-06-02T16:34:52.836Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/claudio-13341/services/cloudbuild.googleapis.com [omitted]
+[info] ✔  functions: required API cloudbuild.googleapis.com is enabled 
+[debug] [2025-06-02T16:34:52.836Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.837Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:52.837Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/claudio-13341/adminSdkConfig [none]
+[debug] [2025-06-02T16:34:53.071Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/claudio-13341/adminSdkConfig 200
+[debug] [2025-06-02T16:34:53.072Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/claudio-13341/adminSdkConfig {"projectId":"claudio-13341","storageBucket":"claudio-13341.firebasestorage.app"}
+[debug] [2025-06-02T16:34:53.073Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:53.073Z] Checked if tokens are valid: true, expires at: 1748885559806
+[debug] [2025-06-02T16:34:53.073Z] >>> [apiv2][query] GET https://runtimeconfig.googleapis.com/v1beta1/projects/claudio-13341/configs [none]
