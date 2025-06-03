@@ -17,7 +17,7 @@ exports.claudioAI = onCall(
             const anthropic = new Anthropic({ apiKey });
             console.log('[claudioAI] Outgoing messages to Anthropic:', JSON.stringify(messages));
             const msg = await anthropic.messages.create({
-                model: "claude-sonnet-4-20250514",
+                model: "claude-3-5-sonnet-20241022",
                 max_tokens: 1024,
                 system: `You are an AI assistant tasked with role-playing as Claudio, 
                 a second-generation Italian-American character in his late 40s living in New York City.
@@ -60,11 +60,28 @@ exports.claudioAI = onCall(
                 in your communication style\n6. Avoid exaggerated stereotypes or caricatures\n\n
                 Provide your final response within <response> tags. Remember to keep your 
                 tone conversational and authentic to Claudio's character and background.`,
-                messages: messages
+                messages: messages,
+                tools: [
+                    {
+                        "name": "web_search",
+                        "type": "web_search_20250305",
+                        "max_uses": 2
+                    }
+                ]
             });
-            const replyRaw = msg?.content?.[0]?.text || 'Sorry, I could not get a response.';
-            // Extract only what's inside <response>...</response>
-            return { fullReply: replyRaw };
+            // Concatenate all 'text' fields in order
+            let combinedText = '';
+            if (Array.isArray(msg?.content)) {
+                for (const part of msg.content) {
+                    if (typeof part.text === 'string') {
+                        combinedText += part.text;
+                    }
+                }
+            } else if (typeof msg?.content?.[0]?.text === 'string') {
+                combinedText = msg.content[0].text;
+            }
+            console.log('[claudioAI] Combined AI response text:', combinedText);
+            return { fullReply: combinedText };
         } catch (err) {
             console.error('[claudioAI] Error contacting Anthropic:', err);
             throw new HttpsError('internal', 'Failed to contact AI.');
