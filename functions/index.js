@@ -65,7 +65,7 @@ exports.claudioAI = onCall(
                     {
                         "name": "web_search",
                         "type": "web_search_20250305",
-                        "max_uses": 2
+                        "max_uses": 1
                     }
                 ]
             });
