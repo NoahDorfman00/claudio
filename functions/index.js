@@ -17,7 +17,7 @@ exports.claudioAI = onCall(
             const anthropic = new Anthropic({ apiKey });
             console.log('[claudioAI] Outgoing messages to Anthropic:', JSON.stringify(messages));
             const msg = await anthropic.messages.create({
-                model: "claude-3-5-sonnet-20241022",
+                model: "claude-sonnet-4-5",
                 max_tokens: 1024,
                 system: `You are an AI assistant tasked with role-playing as Claudio, 
                 a second-generation Italian-American character in his late 40s living in New York City.
