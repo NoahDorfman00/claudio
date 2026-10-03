@@ -319,16 +319,21 @@ export async function startCheckout() {
     }
     try {
         const { url } = await api('/checkout', { method: 'POST' });
-        location.href = url;
+        goToStripe(url);
     } catch (err) {
         alertDialog('Couldn\'t start checkout', err.message);
     }
 }
 
+function goToStripe(url) {
+    try { sessionStorage.setItem('claudio.awayAtStripe', '1'); } catch {}
+    location.href = url;
+}
+
 async function openPortal(flow) {
     try {
         const { url } = await api('/portal', { method: 'POST', body: flow ? { flow } : undefined });
-        location.href = url;
+        goToStripe(url);
     } catch (err) {
         alertDialog('Couldn\'t open billing', err.message);
     }
@@ -573,7 +578,7 @@ export function openAccount() {
             status.append(
                 text('p', 'acct-status-title', 'Your last payment didn\'t go through'),
                 text('p', 'muted', 'Update your card to keep chatting.'),
-                button('Update payment', 'btn primary', () => openPortal()),
+                button('Update payment', 'btn primary', () => openPortal('payment')),
             );
         } else if (browserKey() || a.keyHint) {
             status.append(
@@ -604,16 +609,32 @@ export function openAccount() {
         const rows = el('div', 'acct-rows');
         if (a.subscriptionStatus === 'pending_cancellation') {
             rows.append(
-                row('Keep my subscription', 'Undo the cancellation', () => openPortal()),
-                row('Manage billing', 'Update your card, see invoices', () => openPortal()),
+                row('Keep my subscription', 'Undo the cancellation', async (e) => {
+                    const r = e.currentTarget;
+                    r.disabled = true;
+                    r.querySelector('small').textContent = 'One sec…';
+                    try {
+                        const { url } = await api('/subscription/resume', { method: 'POST' });
+                        if (url) return goToStripe(url);
+                        await refreshAccount();
+                        close();
+                        openAccount();
+                    } catch (err) {
+                        close();
+                        alertDialog('Couldn\'t update your subscription', err.message);
+                    }
+                }),
+                row('Update payment method', 'Change the card you pay with', () => openPortal('payment')),
+                row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()),
             );
         } else if (subscribed) {
             rows.append(
-                row('Manage billing', 'Update your card, see invoices', () => openPortal()),
+                row('Update payment method', 'Change the card you pay with', () => openPortal('payment')),
+                row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()),
                 row('Cancel subscription', `You'll keep access until ${a.allowanceResets}`, () => openPortal('cancel')),
             );
         } else if (a.subscriptionStatus === 'past_due') {
-            rows.append(row('Manage billing', 'Update your card, see invoices', () => openPortal()));
+            rows.append(row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()));
         } else {
             rows.append(row('Become a regular', price ? `${price} · keep chatting all month` : 'Keep chatting all month', () => {
                 close();
@@ -645,19 +666,55 @@ export function openAccount() {
 
 // ---------- Returning from Stripe ----------
 
+// Re-check the account until it changes (the webhook can trail the redirect by a few seconds),
+// or just once if nothing is expected to change.
+let polling = false;
+async function refreshUntilChanged(tries) {
+    if (polling) return;
+    polling = true;
+    try {
+        const before = JSON.stringify([account?.subscriptionStatus, account?.endsOn, account?.keyHint]);
+        for (let i = 0; i < tries; i++) {
+            if (i) await new Promise((r) => setTimeout(r, 1500));
+            await refreshAccount();
+            if (JSON.stringify([account?.subscriptionStatus, account?.endsOn, account?.keyHint]) !== before) break;
+        }
+    } finally {
+        polling = false;
+    }
+}
+
+function cameBackFromStripe() {
+    try {
+        const away = sessionStorage.getItem('claudio.awayAtStripe');
+        sessionStorage.removeItem('claudio.awayAtStripe');
+        return Boolean(away);
+    } catch {
+        return false;
+    }
+}
+
+// Back button from Stripe restores this page from the browser's cache without rerunning
+// anything, so refresh the account when that happens, and when the tab comes back into view.
+window.addEventListener('pageshow', (e) => {
+    if (e.persisted) refreshUntilChanged(cameBackFromStripe() ? 6 : 1);
+});
+let lastVisibleRefresh = Date.now();
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || Date.now() - lastVisibleRefresh < 30000) return;
+    lastVisibleRefresh = Date.now();
+    refreshUntilChanged(1);
+});
+
 // Back from the billing portal: the webhook may land a moment after the redirect, so look a
 // few times for the change.
 async function handleBillingReturn(params) {
     params.delete('billing');
+    cameBackFromStripe();
     const qs = params.toString();
     history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
     await signedInUser();
-    const before = JSON.stringify([account?.subscriptionStatus, account?.endsOn]);
-    for (let i = 0; i < 6; i++) {
-        await refreshAccount();
-        if (account && JSON.stringify([account.subscriptionStatus, account.endsOn]) !== before && i > 0) break;
-        await new Promise((r) => setTimeout(r, 1500));
-    }
+    await refreshUntilChanged(6);
 }
 
 export async function handleCheckoutReturn(toast) {

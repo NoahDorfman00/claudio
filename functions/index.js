@@ -394,8 +394,34 @@ exports.api = onRequest(
                     return;
                 }
 
-                // Stripe's hosted portal handles cancel, resume, card updates and invoices.
-                // { flow: 'cancel' } opens straight onto the cancel screen and comes back here after.
+                // Undo a pending cancellation right here, no trip to Stripe needed.
+                case 'POST /subscription/resume': {
+                    requireSignedIn(user);
+                    const subId = (await userRef(user.uid).get()).get('stripeSubscriptionId');
+                    if (!subId) throw new AccessError(400, 'NO_SUBSCRIPTION', 'No subscription on this account.');
+                    try {
+                        const current = await stripe.subscriptions.retrieve(subId);
+                        // Portal cancellations set cancel_at_period_end; an explicit cancel date is cleared with ''.
+                        const undo = current.cancel_at_period_end ? { cancel_at_period_end: false } : { cancel_at: '' };
+                        const sub = await stripe.subscriptions.update(subId, undo);
+                        await syncSubscription(sub, user.uid);
+                        res.json({ ok: true });
+                    } catch (err) {
+                        // A restricted key without Subscriptions write: send them to the portal instead.
+                        if (err.type !== 'StripePermissionError') throw err;
+                        console.warn('[api] STRIPE_SECRET_KEY needs Subscriptions: Write to resume in-app');
+                        const session = await stripe.billingPortal.sessions.create({
+                            customer: (await userRef(user.uid).get()).get('stripeCustomerId'),
+                            return_url: `${returnOrigin(req)}/?billing=updated`,
+                        });
+                        res.json({ url: session.url });
+                    }
+                    return;
+                }
+
+                // Stripe's hosted billing portal. A flow ('cancel' or 'payment') opens straight onto
+                // that one screen and redirects back here when it's done; without one it's the full
+                // portal (invoices), which only has a "Return to Claudio" link.
                 case 'POST /portal': {
                     requireSignedIn(user);
                     const snap = await userRef(user.uid).get();
@@ -404,12 +430,15 @@ exports.api = onRequest(
                     const back = `${returnOrigin(req)}/?billing=updated`;
                     const params = { customer, return_url: back };
                     const subscription = snap.get('stripeSubscriptionId');
+                    const afterCompletion = { type: 'redirect', redirect: { return_url: back } };
                     if (req.body?.flow === 'cancel' && subscription) {
                         params.flow_data = {
                             type: 'subscription_cancel',
                             subscription_cancel: { subscription },
-                            after_completion: { type: 'redirect', redirect: { return_url: back } },
+                            after_completion: afterCompletion,
                         };
+                    } else if (req.body?.flow === 'payment') {
+                        params.flow_data = { type: 'payment_method_update', after_completion: afterCompletion };
                     }
                     const session = await stripe.billingPortal.sessions.create(params);
                     res.json({ url: session.url });
