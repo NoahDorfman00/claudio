@@ -645,20 +645,18 @@ export function openAccount() {
                     close();
                     await changeSubscription('resume');
                 }),
-                row('Update payment method', 'Change the card you pay with', () => openPortal('payment')),
-                row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()),
+                row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()),
             );
         } else if (subscribed) {
             rows.append(
-                row('Update payment method', 'Change the card you pay with', () => openPortal('payment')),
-                row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()),
+                row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()),
                 row('Cancel subscription', `You'll keep access until ${a.allowanceResets}`, () => {
                     close();
                     confirmCancel(a.allowanceResets);
                 }),
             );
         } else if (a.subscriptionStatus === 'past_due') {
-            rows.append(row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()));
+            rows.append(row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()));
         } else {
             rows.append(row('Become a regular', price ? `${price} · keep chatting all month` : 'Keep chatting all month', () => {
                 close();
