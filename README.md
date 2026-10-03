@@ -67,11 +67,12 @@ trial runs out, a "keep going?" dialog offers:
 - **Become a regular.** $6/month through Stripe, running on my key, with a
   monthly allowance of $5 of actual API cost. Each reply's cost is worked
   out from the token and search counts the API reports (`costMicros` in
-  `functions/access.js`) and added to the subscriber's month; the UI shows it
-  as a percent-used meter. Cheap chats stretch it to several hundred
-  messages; search- and PDF-heavy ones use it up faster. Every request also
-  logs a `[usage]` line with its cost to Cloud Logging, which is the data to
-  check the price against.
+  `functions/access.js`) and added to the subscriber's current billing
+  period, so it resets on their billing date rather than the 1st. The UI
+  shows it as a percent-used meter. Cheap chats stretch it to several
+  hundred messages; search- and PDF-heavy ones use it up faster. Every
+  request also logs a `[usage]` line with its cost to Cloud Logging, which
+  is the data to check the price against.
 
 Signing in with Google *links* the anonymous account, so trial usage
 carries over instead of resetting. For each message the server picks who
