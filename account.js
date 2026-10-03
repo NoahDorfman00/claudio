@@ -109,13 +109,6 @@ export function noteAllowanceUsed(percent) {
     }
 }
 
-export function noteFreeMessagesLeft(left) {
-    if (account && typeof left === 'number') {
-        account.freeMessagesLeft = left;
-        emit();
-    }
-}
-
 // ---------- Browser-only API key ----------
 
 export function browserKey() {
@@ -176,8 +169,7 @@ export function statusLine() {
     if (account.subscriptionStatus === 'past_due') return 'Payment problem';
     if (bk) return `Your key ${bk.hint}`;
     if (account.keyHint) return `Your key ${account.keyHint}`;
-    const left = account.freeMessagesLeft;
-    return left > 0 ? `${left} free message${left === 1 ? '' : 's'} left` : 'Free tasting menu used up';
+    return account.trialUsedUp ? 'Free tasting menu finished' : 'Free tasting menu';
 }
 
 export function displayName() {
@@ -623,11 +615,11 @@ function renderAccount(body, close) {
             text('p', 'muted', 'No limits here. Usage is billed to your Anthropic account.'),
         );
     } else {
-        const used = a.freeMessages - a.freeMessagesLeft;
         status.append(
             text('p', 'acct-status-title', 'Free tasting menu'),
-            meter(Math.round((used / a.freeMessages) * 100), 'Free messages used'),
-            text('p', 'muted', `${a.freeMessagesLeft} of ${a.freeMessages} free messages left`),
+            text('p', 'muted', a.trialUsedUp
+                ? 'You\'ve finished the free tasting menu. Become a regular or use your own API key to keep going.'
+                : 'Chat away, it\'s on the house. When the tasting menu\'s done, you can become a regular to keep going.'),
         );
     }
     body.append(status);

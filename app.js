@@ -886,7 +886,6 @@ async function respond() {
                     case 'text': view.addText(event.text); break;
                     case 'tool': view.addTool(event.name, event.input); break;
                     case 'citations': view.addCitations(event.citations); break;
-                    case 'payer': acct.noteFreeMessagesLeft(event.freeMessagesLeft); break;
                     case 'done':
                         result = event;
                         acct.noteAllowanceUsed(event.allowanceUsedPercent);

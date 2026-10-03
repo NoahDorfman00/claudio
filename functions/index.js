@@ -7,7 +7,7 @@ const { encryptApiKey, apiKeyHint } = require('./keyCrypto');
 const { getWelcome } = require('./welcome');
 const {
     db, userRef, keyRef, AccessError, verifyUser, clientIp, resolvePayer, accountSummary, API_KEY_PATTERN,
-    costMicros, recordSubscriberUsage,
+    costMicros, recordSubscriberUsage, recordTrialUsage,
 } = require('./access');
 
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
@@ -104,12 +104,13 @@ exports.claudioChat = onRequest(
 
         let payer;
         let user;
+        const ip = clientIp(req);
         try {
             user = await verifyUser(req);
             payer = await resolvePayer({
                 user,
                 browserKey: typeof browserKey === 'string' ? browserKey.trim() : null,
-                ip: clientIp(req),
+                ip,
                 ownerKey: ANTHROPIC_API_KEY.value(),
                 encryptionKey: ANTHROPIC_KEY_ENCRYPTION_KEY.value(),
             });
@@ -127,12 +128,10 @@ exports.claudioChat = onRequest(
         res.flushHeaders();
 
         const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
-        send({ type: 'payer', source: payer.source, freeMessagesLeft: payer.freeMessagesLeft });
 
         const client = new Anthropic({ apiKey: payer.apiKey });
         let stream = null;
         let closed = false;
-        let produced = false; // has Claudio said anything yet? if not, a failure refunds the message
         res.on('close', () => {
             closed = true;
             stream?.abort();
@@ -155,15 +154,17 @@ exports.claudioChat = onRequest(
             return usage ? costMicros({ ...usage, output_tokens: Math.ceil(streamedChars / 4) }) : 0;
         };
 
+        // Trial and subscription messages count against a budget of what they actually cost.
         const settleUsage = async (micros) => {
             console.log('[usage]', JSON.stringify({ uid: user.uid, source: payer.source, micros }));
-            if (payer.source !== 'subscription' || micros <= 0) return undefined;
+            if (micros <= 0) return undefined;
             try {
-                return await recordSubscriberUsage(user.uid, micros);
+                if (payer.source === 'subscription') return await recordSubscriberUsage(user.uid, micros);
+                if (payer.source === 'trial') await recordTrialUsage(user.uid, ip, micros);
             } catch (err) {
                 console.error('[claudioChat] could not record usage', err);
-                return undefined;
             }
+            return undefined;
         };
 
         try {
@@ -190,12 +191,10 @@ exports.claudioChat = onRequest(
                     } else if (event.type === 'content_block_delta') {
                         const d = event.delta;
                         if (d.type === 'text_delta') {
-                            produced = true;
                             streamedChars += d.text.length;
                             send({ type: 'text', text: d.text });
                         }
                         if (d.type === 'thinking_delta') {
-                            produced = true;
                             streamedChars += d.thinking.length;
                             send({ type: 'thinking', text: d.thinking });
                         }
@@ -232,7 +231,6 @@ exports.claudioChat = onRequest(
                 send({ type: 'done', content: turnContent, stop_reason: stopReason, allowanceUsedPercent });
             }
         } catch (err) {
-            if (!produced) await payer.refund?.();
             await settleUsage(spentMicros + unfinishedMicros());
             if (closed) return;
             console.error('[claudioChat] Anthropic error:', err);
@@ -353,7 +351,7 @@ exports.api = onRequest(
             switch (route) {
                 case 'GET /account': {
                     let [account, plan] = await Promise.all([
-                        accountSummary(user),
+                        accountSummary(user, clientIp(req)),
                         planInfo(stripe),
                     ]);
                     // Subscriptions synced before period dates were stored: fetch them once.
@@ -361,7 +359,7 @@ exports.api = onRequest(
                         const subId = (await userRef(user.uid).get()).get('stripeSubscriptionId');
                         if (subId) {
                             await syncSubscription(await stripe.subscriptions.retrieve(subId), user.uid);
-                            account = await accountSummary(user);
+                            account = await accountSummary(user, clientIp(req));
                         }
                     }
                     res.json({ ...account, plan });

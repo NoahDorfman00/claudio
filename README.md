@@ -56,10 +56,14 @@ secret and streams one `messages.stream` call:
 - CORS is limited to the live domain and `localhost`
 
 **Who pays.** Every visitor is signed in to Firebase Auth anonymously in
-the background, and that's what the free trial is counted against: 10
-messages on my key (`functions/access.js`). The server counts them in a
-Firestore transaction, with a per-IP daily cap as a speed bump. When the
-trial runs out, a "keep going?" dialog offers:
+the background, and that's what the free trial is counted against: $0.30
+of actual API cost on my key, about ten typical messages
+(`functions/access.js`). There's no counter in the UI; you just chat until
+it runs out. Each network gets the same $0.30 over a rolling 30 days, so
+clearing storage or signing out for a fresh guest session doesn't unlock
+more. The network is the client address Google's front end appends last to
+`X-Forwarded-For` (earlier entries can be spoofed), grouped by /64 for IPv6.
+When the trial runs out, a "keep going?" dialog offers:
 
 - **Bring your own API key.** Keep it in this browser for 7 days (it's sent
   along with each message and never stored server-side), or sign in and
@@ -77,8 +81,9 @@ trial runs out, a "keep going?" dialog offers:
 Signing in with Google *links* the anonymous account, so trial usage
 carries over instead of resetting. For each message the server picks who
 pays in this order: subscription, a key the browser sent, a saved key, then
-the trial. If a trial or subscription message fails before Claudio says
-anything, it's given back.
+the trial. Trial and subscription messages are charged at what they
+actually cost, so one that fails before Claudio says anything costs
+nothing.
 
 **Saved keys** are encrypted with AES-256-GCM (`functions/keyCrypto.js`).
 The data key is the `ANTHROPIC_KEY_ENCRYPTION_KEY` secret, and the user's
@@ -108,7 +113,7 @@ someone is going through something hard or asks him to.
 | Backend | Firebase Functions v2 (`onRequest`), Node 22: `claudioChat` (streaming SSE), `api` (account, keys, checkout, portal), `stripeWebhook` |
 | Model | Claude Sonnet 5.5 with adaptive thinking, web search and web fetch |
 | Auth | Firebase Auth: anonymous for guests, Google to sign in |
-| Storage | Chats in the browser's IndexedDB. Firestore holds only trial counters, subscription status and encrypted keys |
+| Storage | Chats in the browser's IndexedDB. Firestore holds only trial usage, subscription status, encrypted keys and the day's welcome messages |
 | Billing | Stripe Checkout + customer portal + webhook |
 | Secrets | `ANTHROPIC_API_KEY`, `ANTHROPIC_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` |
 

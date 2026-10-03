@@ -2,23 +2,27 @@
 // an anonymous user), Firestore holds the trial counter, subscription status and saved key.
 //
 // Firestore layout (clients have no direct access; see firestore.rules):
-//   users/{uid}                 { freeMessagesUsed, subscriptionStatus, stripeCustomerId,
+//   users/{uid}                 { trialMicros, subscriptionStatus, stripeCustomerId,
 //                                 anthropicKeyHint, periodStart, periodEnd, cancelAt,
 //                                 usagePeriod, usageMicros, email }
 //   users/{uid}/private/apiKey  { encrypted, updatedAt }
-//   trialIps/{sha256(ip)}       { day, count }
+//   trialIps/{sha256(network)}  { micros, since }
 
 const crypto = require('crypto');
 const { getApps, initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore } = require('firebase-admin/firestore');
 const { decryptApiKey } = require('./keyCrypto');
 
 if (!getApps().length) initializeApp();
 const db = getFirestore();
 
-const FREE_MESSAGES = 10;            // per account, anonymous or signed in
-const TRIAL_MESSAGES_PER_IP_DAY = 40; // speed bump against clearing storage for a fresh trial
+// The free trial is a budget of real API cost, not a message count, and it isn't shown to the
+// user: they chat until it runs out and then see the paywall. Each network gets the same
+// budget as each account (over a rolling window), so clearing storage or signing out for a
+// fresh guest session on the same network doesn't unlock more.
+const TRIAL_BUDGET_MICROS = 300_000; // $0.30, roughly ten typical messages
+const TRIAL_NETWORK_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 // Subscribers get a monthly allowance measured in what their messages actually cost on the
 // API, in micro-dollars. $5 against a $6/month price keeps a maxed-out subscriber about even.
 const SUBSCRIBER_MONTHLY_BUDGET_MICROS = 5_000_000;
@@ -61,40 +65,53 @@ async function verifyUser(req) {
     }
 }
 
+// Google's front end appends the real client address as the last X-Forwarded-For entry;
+// anything before it came from the client and can be made up.
 function clientIp(req) {
-    return (req.get('x-forwarded-for') || '').split(',')[0].trim() || req.ip || 'unknown';
+    const hops = (req.get('x-forwarded-for') || '').split(',').map((h) => h.trim()).filter(Boolean);
+    return hops[hops.length - 1] || req.socket?.remoteAddress || 'unknown';
 }
 
-function today() {
-    return new Date().toISOString().slice(0, 10);
+/**
+ * The network an address belongs to. IPv6 devices rotate through addresses inside their /64,
+ * so that prefix is the network; IPv4 (including IPv4-mapped IPv6) is the address itself.
+ */
+function networkOf(ip) {
+    const v4 = ip.match(/(\d{1,3}(?:\.\d{1,3}){3})$/);
+    if (v4) return v4[1];
+    if (!ip.includes(':')) return ip;
+    const [head, tail = ''] = ip.split('%')[0].split('::');
+    const h = head ? head.split(':') : [];
+    const t = tail ? tail.split(':') : [];
+    const groups = [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+    return `${groups.slice(0, 4).map((g) => parseInt(g || '0', 16).toString(16)).join(':')}::/64`;
 }
 
-async function claimTrialMessage(uid, ip) {
-    const ipRef = db.collection('trialIps').doc(crypto.createHash('sha256').update(ip).digest('hex'));
-    const day = today();
-    let left = 0;
+const networkRef = (ip) => db.collection('trialIps').doc(crypto.createHash('sha256').update(networkOf(ip)).digest('hex'));
+
+function networkSpent(snap) {
+    const since = snap.get('since') || 0;
+    return Date.now() - since < TRIAL_NETWORK_WINDOW_MS ? snap.get('micros') || 0 : 0;
+}
+
+async function checkTrial(data, ip) {
+    if ((data.trialMicros || 0) >= TRIAL_BUDGET_MICROS) {
+        throw new AccessError(402, 'TRIAL_USED', 'That\'s the end of the free tasting menu.');
+    }
+    if (networkSpent(await networkRef(ip).get()) >= TRIAL_BUDGET_MICROS) {
+        throw new AccessError(402, 'TRIAL_USED', 'That\'s the end of the free tasting menu.');
+    }
+}
+
+/** Add a trial message's cost to both the account and its network. */
+async function recordTrialUsage(uid, ip, micros) {
+    const ref = networkRef(ip);
     await db.runTransaction(async (tx) => {
-        const [userSnap, ipSnap] = await Promise.all([tx.get(userRef(uid)), tx.get(ipRef)]);
-        const used = userSnap.get('freeMessagesUsed') || 0;
-        if (used >= FREE_MESSAGES) {
-            throw new AccessError(402, 'TRIAL_USED', 'That\'s the end of the free tasting menu.');
-        }
-        const ipCount = ipSnap.get('day') === day ? ipSnap.get('count') || 0 : 0;
-        if (ipCount >= TRIAL_MESSAGES_PER_IP_DAY) {
-            throw new AccessError(402, 'TRIAL_USED', 'The free tasting menu is all used up on this network today.');
-        }
-        tx.set(userRef(uid), { freeMessagesUsed: used + 1 }, { merge: true });
-        tx.set(ipRef, { day, count: ipCount + 1 });
-        left = FREE_MESSAGES - used - 1;
+        const [userSnap, netSnap] = await Promise.all([tx.get(userRef(uid)), tx.get(ref)]);
+        const spent = networkSpent(netSnap);
+        tx.set(userRef(uid), { trialMicros: (userSnap.get('trialMicros') || 0) + micros }, { merge: true });
+        tx.set(ref, { micros: spent + micros, since: spent ? netSnap.get('since') : Date.now() });
     });
-    // Give the message back if the request fails before Claudio says anything.
-    const refund = async () => {
-        await Promise.all([
-            userRef(uid).set({ freeMessagesUsed: FieldValue.increment(-1) }, { merge: true }),
-            ipRef.set({ count: FieldValue.increment(-1) }, { merge: true }),
-        ]).catch((err) => console.error('[access] trial refund failed', err));
-    };
-    return { refund, left };
 }
 
 function addMonth(seconds) {
@@ -169,7 +186,7 @@ function allowancePercent(micros) {
 /**
  * Decide which API key pays for a message, in order: subscription (owner's key), a key the
  * browser sent with this request, a saved encrypted key, then the free trial (owner's key).
- * Returns { apiKey, source, refund, freeMessagesLeft? }.
+ * Returns { apiKey, source }.
  */
 async function resolvePayer({ user, browserKey, ip, ownerKey, encryptionKey }) {
     const snap = await userRef(user.uid).get();
@@ -178,7 +195,7 @@ async function resolvePayer({ user, browserKey, ip, ownerKey, encryptionKey }) {
     if (!user.isAnonymous && PAID_STATUSES.has(data.subscriptionStatus)) {
         try {
             await checkSubscriberAllowance(user.uid, data);
-            return { apiKey: ownerKey, source: 'subscription', refund: null };
+            return { apiKey: ownerKey, source: 'subscription' };
         } catch (err) {
             // Past the monthly allowance, a subscriber who also has a key of their own falls through to it.
             const hasOwnKey = browserKey || data.anthropicKeyHint;
@@ -190,14 +207,14 @@ async function resolvePayer({ user, browserKey, ip, ownerKey, encryptionKey }) {
         if (!API_KEY_PATTERN.test(browserKey)) {
             throw new AccessError(400, 'BAD_KEY', 'That doesn\'t look like an Anthropic API key.');
         }
-        return { apiKey: browserKey, source: 'browser', refund: null };
+        return { apiKey: browserKey, source: 'browser' };
     }
 
     if (!user.isAnonymous && data.anthropicKeyHint) {
         const keySnap = await keyRef(user.uid).get();
         if (keySnap.exists) {
             try {
-                return { apiKey: decryptApiKey(keySnap.get('encrypted'), user.uid, encryptionKey), source: 'saved', refund: null };
+                return { apiKey: decryptApiKey(keySnap.get('encrypted'), user.uid, encryptionKey), source: 'saved' };
             } catch (err) {
                 console.error('[access] could not decrypt saved key', err);
                 throw new AccessError(500, 'BAD_SAVED_KEY', 'Couldn\'t read your saved API key. Save it again from your account.');
@@ -205,19 +222,18 @@ async function resolvePayer({ user, browserKey, ip, ownerKey, encryptionKey }) {
         }
     }
 
-    const { refund, left } = await claimTrialMessage(user.uid, ip);
-    return { apiKey: ownerKey, source: 'trial', refund, freeMessagesLeft: left };
+    await checkTrial(data, ip);
+    return { apiKey: ownerKey, source: 'trial' };
 }
 
-async function accountSummary(user) {
+async function accountSummary(user, ip) {
     const data = (await userRef(user.uid).get()).data() || {};
-    const used = data.freeMessagesUsed || 0;
+    const networkUsedUp = ip ? networkSpent(await networkRef(ip).get()) >= TRIAL_BUDGET_MICROS : false;
     return {
         uid: user.uid,
         email: user.email,
         isAnonymous: user.isAnonymous,
-        freeMessages: FREE_MESSAGES,
-        freeMessagesLeft: Math.max(0, FREE_MESSAGES - used),
+        trialUsedUp: (data.trialMicros || 0) >= TRIAL_BUDGET_MICROS || networkUsedUp,
         subscriptionStatus: user.isAnonymous ? 'unsubscribed' : data.subscriptionStatus || 'unsubscribed',
         allowanceUsedPercent: allowancePercent(spentThisPeriod(data)),
         // When the allowance resets (renewal), or when access ends if the subscription is cancelled.
@@ -239,6 +255,7 @@ module.exports = {
     accountSummary,
     costMicros,
     recordSubscriberUsage,
+    recordTrialUsage,
     API_KEY_PATTERN,
     PAID_STATUSES,
 };
