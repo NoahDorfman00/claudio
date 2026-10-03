@@ -4,7 +4,7 @@ A chatbot that role-plays Claudio and Claudia: second-generation
 Italian-American grandparents in their late sixties from South Jersey, with
 opinions about your gravy. He's a retired machinist who can fix anything;
 she's a retired seamstress and the best cook in the family.
-Live at [claudio.noahgdorfman.com](https://claudio.noahgdorfman.com/).
+Live at [ai.noahgdorfman.com](https://ai.noahgdorfman.com/).
 
 <p align="center">
   <img src="assets/social.png" alt="Illustrated portrait of Claudio in a flat cap, with the title 'Claudio: Artificial Italian'" width="560">
@@ -183,7 +183,7 @@ You'll need the Firebase CLI and a Firebase project of your own.
 One-time setup in the Firebase console:
 
 - **Authentication:** enable the Anonymous and Google
-  providers, and add `claudio.noahgdorfman.com` under Settings → Authorized
+  providers, and add `ai.noahgdorfman.com` under Settings → Authorized
   domains.
 - **Firestore:** create the database (production mode is fine;
   `firestore.rules` only lets signed-in users at their own chats).

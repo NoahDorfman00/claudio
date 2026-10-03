@@ -22,10 +22,12 @@ const MAX_TOKENS = 32000;
 const MAX_CONTINUATIONS = 4;
 const MAX_MESSAGES = 200;
 
-const SITE_URL = 'https://claudio.noahgdorfman.com';
+const SITE_URL = 'https://ai.noahgdorfman.com';
+// The site's previous address, still allowed so open tabs keep working through the move.
+const OLD_SITE_URL = 'https://claudio.noahgdorfman.com';
 const APP_TAG = 'claudio';
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-const ALLOWED_ORIGINS = [SITE_URL, LOCAL_ORIGIN];
+const ALLOWED_ORIGINS = [SITE_URL, OLD_SITE_URL, LOCAL_ORIGIN];
 
 const TOOLS = [
     { type: 'web_search_20260209', name: 'web_search', max_uses: 5 },
@@ -296,7 +298,7 @@ async function checkAnthropicKey(apiKey) {
 
 function returnOrigin(req) {
     const origin = req.get('Origin') || '';
-    return origin === SITE_URL || LOCAL_ORIGIN.test(origin) ? origin : SITE_URL;
+    return origin === SITE_URL || LOCAL_ORIGIN.test(origin) ? origin : SITE_URL; // old domain returns to the new one
 }
 
 function requireSignedIn(user) {
