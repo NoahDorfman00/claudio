@@ -22,10 +22,10 @@ const MAX_TOKENS = 32000;
 const MAX_CONTINUATIONS = 4;
 const MAX_MESSAGES = 200;
 
-// The site is moving from claudio.noahgdorfman.com to ai.noahgdorfman.com; both are allowed so
-// either address works before, during and after the switch. SITE_URL is the fallback.
-const SITE_URL = 'https://claudio.noahgdorfman.com';
-const SITE_ORIGINS = ['https://claudio.noahgdorfman.com', 'https://ai.noahgdorfman.com'];
+// The site lives at ai.noahgdorfman.com; claudio.noahgdorfman.com was its old address and is still
+// allowed for tabs left open from before the move. SITE_URL is the fallback.
+const SITE_URL = 'https://ai.noahgdorfman.com';
+const SITE_ORIGINS = ['https://ai.noahgdorfman.com', 'https://claudio.noahgdorfman.com'];
 const APP_TAG = 'claudio';
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const ALLOWED_ORIGINS = [...SITE_ORIGINS, LOCAL_ORIGIN];
