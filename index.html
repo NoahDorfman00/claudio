@@ -3,11 +3,13 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Claudio</title>
 
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤌</text></svg>">
+    <meta name="theme-color" content="#f3e1ce" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1e1915" media="(prefers-color-scheme: dark)">
 
     <!-- HTML Meta Tags -->
     <meta name="description" content="Artificial Italian">
@@ -26,27 +28,104 @@
     <meta name="twitter:description" content="Artificial Italian">
     <meta name="twitter:image" content="https://claudio.noahgdorfman.com/assets/social.png?1234">
 
-    <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@700&family=Spectral:wght@400&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap"
         rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.12.0/styles/github.min.css"
+        media="(prefers-color-scheme: light)">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.12.0/styles/github-dark.min.css"
+        media="(prefers-color-scheme: dark)">
+    <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-    <header>
-        <div class="claudio-img-bg">
-            <img src="assets/claudio.png" alt="Claudio" class="claudio-img">
-            <div class="claudio-name">Claudio</div>
-        </div>
-    </header>
-    <main>
-        <div id="chat-window" class="chat-window"></div>
-        <form id="chat-form" autocomplete="off">
-            <input type="text" id="user-input" placeholder="Say something to Claudio..." required />
-            <button type="submit">Send</button>
-        </form>
-    </main>
+    <div class="app" id="app">
+        <aside class="sidebar" id="sidebar" aria-label="Conversations">
+            <div class="sidebar-head">
+                <a class="brand" href="./" aria-label="Claudio home">
+                    <img src="assets/claudio-avatar.jpg" alt="" class="avatar">
+                    <span class="brand-text">
+                        <span class="brand-name">Claudio</span>
+                        <span class="brand-tag">Artificial Italian</span>
+                    </span>
+                </a>
+                <button class="icon-btn only-mobile" id="close-sidebar" type="button" aria-label="Close sidebar">
+                    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+            </div>
+            <button class="new-chat" id="new-chat" type="button">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                New chat
+            </button>
+            <nav class="chat-list" id="chat-list"></nav>
+            <button class="account-btn" id="account-btn" type="button">
+                <span class="account-initial">?</span>
+                <span class="account-text">
+                    <span class="account-name">Guest</span>
+                    <span class="account-status">Loading…</span>
+                </span>
+                <svg viewBox="0 0 24 24"><path d="M8 10l4-4 4 4M8 14l4 4 4-4" /></svg>
+            </button>
+            <p class="sidebar-foot">Powered by Claude Sonnet 5.5</p>
+        </aside>
+        <div class="scrim" id="scrim"></div>
+
+        <main class="main">
+            <header class="topbar">
+                <button class="icon-btn" id="toggle-sidebar" type="button" aria-label="Toggle sidebar">
+                    <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+                </button>
+                <h1 class="topbar-title" id="chat-title">New chat</h1>
+                <button class="icon-btn" id="new-chat-top" type="button" aria-label="New chat">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                </button>
+            </header>
+
+            <div class="scroller" id="scroller">
+                <section class="empty" id="empty">
+                    <img src="assets/claudio-avatar.jpg" alt="Illustrated portrait of Claudio in a flat cap" class="empty-avatar">
+                    <h2 class="empty-title">Ciao! What're we cookin' today?</h2>
+                    <p class="empty-sub">Code, writing, homework, a dinner plan, or just somebody to talk to. Pull up a chair.</p>
+                    <div class="suggestions" id="suggestions">
+                        <button type="button" class="suggestion">Help me plan a Sunday dinner for eight</button>
+                        <button type="button" class="suggestion">Explain recursion like I'm one of your line cooks</button>
+                        <button type="button" class="suggestion">What's going on in the news today?</button>
+                        <button type="button" class="suggestion">Write me a Python script to rename a folder of photos by date</button>
+                    </div>
+                </section>
+                <div class="thread" id="thread" aria-live="polite"></div>
+            </div>
+
+            <div class="composer-wrap">
+                <button class="jump" id="jump" type="button" aria-label="Scroll to latest" hidden>
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+                </button>
+                <form class="composer" id="composer" autocomplete="off">
+                    <div class="attachments" id="attachments"></div>
+                    <textarea id="input" rows="1" placeholder="Talk to Claudio…" aria-label="Message Claudio"></textarea>
+                    <div class="composer-bar">
+                        <button class="icon-btn" id="attach" type="button" aria-label="Attach files" title="Attach images, PDFs, or text files">
+                            <svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l9.2-9.2a3.7 3.7 0 015.2 5.2l-9.2 9.2a1.8 1.8 0 01-2.6-2.6l8.5-8.5" /></svg>
+                        </button>
+                        <input type="file" id="file-input" multiple hidden
+                            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.js,.ts,.py,.java,.c,.cpp,.h,.go,.rs,.rb,.php,.html,.css,.sql,.yaml,.yml,.xml,.sh">
+                        <button class="pill" id="think" type="button" aria-pressed="false" title="Claudio takes more time to reason through hard problems">
+                            <svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z" /></svg>
+                            Think it through
+                        </button>
+                        <span class="spacer"></span>
+                        <button class="send" id="send" type="submit" aria-label="Send" disabled>
+                            <svg viewBox="0 0 24 24" class="send-icon"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+                            <svg viewBox="0 0 24 24" class="stop-icon"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
+                        </button>
+                    </div>
+                </form>
+                <p class="disclaimer">Claudio is an AI. He can make mistakes, even about gravy.</p>
+            </div>
+        </main>
+    </div>
+    <div class="drop-overlay" id="drop-overlay"><div>Drop it on the counter</div></div>
     <script type="module" src="app.js"></script>
 </body>
 

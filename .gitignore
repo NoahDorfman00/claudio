@@ -11,6 +11,8 @@ dist/
 # Local env files
 .env
 functions/.env
+functions/.secret.local
+functions/.env.local
 
 # Firebase local emulators
 .firebase/
@@ -24,6 +26,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
 
 # VSCode settings
 .vscode/ 
