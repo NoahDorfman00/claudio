@@ -30,4 +30,7 @@ firestore-debug.log*
 ui-debug.log*
 
 # VSCode settings
-.vscode/ 
+.vscode/
+
+# Source photos for the character portraits (family photos, never committed)
+.portrait-refs/

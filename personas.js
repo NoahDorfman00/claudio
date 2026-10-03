@@ -8,7 +8,7 @@ export const PERSONAS = {
         he: 'he',
         him: 'him',
         avatar: 'assets/claudio-avatar.jpg',
-        avatarAlt: 'Illustrated portrait of Claudio in a flat cap',
+        avatarAlt: 'Illustrated portrait of Claudio, an older man with a kind smile in a black flat cap and vest',
         themeColor: { light: '#f3eee4', dark: '#1b1a17' },
         welcome: {
             greeting: 'Ciao! What\'re we cookin\' today?',
@@ -26,8 +26,8 @@ export const PERSONAS = {
         name: 'Claudia',
         he: 'she',
         him: 'her',
-        avatar: 'assets/claudia-avatar.svg',
-        avatarAlt: 'Illustrated portrait of Claudia with her hair in a bun and gold hoop earrings',
+        avatar: 'assets/claudia-avatar.jpg',
+        avatarAlt: 'Illustrated portrait of Claudia, an older woman with curly gray hair, gold-rimmed glasses and a warm smile',
         themeColor: { light: '#f3eee4', dark: '#1b1a17' },
         welcome: {
             greeting: 'Ciao, bella! Come on in.',

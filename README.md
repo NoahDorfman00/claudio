@@ -31,7 +31,10 @@ in `styles.css`, `functions/prompt.js`). A conversation stays with whoever
 it started with: every chat records its character, the sidebar shows their
 avatar, and opening a chat switches the page to that character. Toggling in
 the middle of a conversation starts a new chat with the other one and keeps
-whatever you'd typed.
+whatever you'd typed. Their portraits are an homage to my late
+Italian-American grandparents, drawn with Nano Banana from family photos in
+the same screen-print style as the original Claudio, with my great-grandfather's
+flat cap on Claudio.
 
 **The page** is plain HTML, CSS and ES modules (`app.js`, `store.js`,
 `account.js`, `sync.js`, `personas.js`). No framework, no build step. It looks like a normal chat app: a sidebar of past
@@ -249,7 +252,7 @@ personas.js       client: the two characters (name, avatar, theme, fallback welc
 sync.js           client: mirrors signed-in users' chats to Firestore and Storage
 store.js          chats and sync bookkeeping in IndexedDB
 styles.css        layout, light/dark themes, Claudia's palette
-assets/           Claudio portrait + small avatar, Claudia avatar (SVG), logo, social card
+assets/           Claudio and Claudia portraits + small avatars, logo, social card
 functions/        index.js (claudioChat, api, stripeWebhook), access.js (who pays),
                   keyCrypto.js (saved-key encryption), prompt.js (both characters),
                   welcome.js (daily welcome messages)
