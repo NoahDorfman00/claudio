@@ -4,7 +4,7 @@ import hljs from 'https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.12.0/e
 import * as store from './store.js';
 import * as acct from './account.js';
 import * as sync from './sync.js';
-import { persona, personaOf, setPersona, onPersonaChange } from './personas.js';
+import { persona, personaOf, setPersona, onPersonaChange, otherPersona } from './personas.js';
 
 // ---------- Config ----------
 
@@ -895,7 +895,10 @@ onPersonaChange((p) => {
     input.placeholder = `Talk to ${p.name}…`;
     $('disclaimer').textContent = `${p.name} is an AI. ${p.he[0].toUpperCase()}${p.he.slice(1)} can make mistakes, even about gravy.`;
     $('drop-overlay').firstElementChild.textContent = 'Drop it on the counter';
-    personaSwitch.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.persona === p.id)));
+    personaSwitch.querySelectorAll('img').forEach((img) => img.classList.toggle('active', img.dataset.persona === p.id));
+    const other = personaOf(otherPersona());
+    personaSwitch.setAttribute('aria-label', `Switch to ${other.name}`);
+    personaSwitch.title = `Switch to ${other.name}`;
     if (!chat) {
         document.title = p.name;
         loadWelcome(p.id);
@@ -905,12 +908,10 @@ onPersonaChange((p) => {
 // Switching characters mid-conversation starts a new chat with the other one (a conversation
 // stays with whoever it started with). A reply in flight keeps going in the background, and
 // whatever you'd typed comes along.
-personaSwitch.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-persona]');
-    if (!b || b.dataset.persona === persona().id) return;
-    if (chat?.messages.length) newChat({ personaId: b.dataset.persona, keepDraft: true });
-    else setPersona(b.dataset.persona);
-    closeSidebarOnMobile();
+personaSwitch.addEventListener('click', () => {
+    const target = otherPersona();
+    if (chat?.messages.length) newChat({ personaId: target, keepDraft: true });
+    else setPersona(target);
 });
 
 // ---------- Sending ----------

@@ -8,8 +8,8 @@
 
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤌</text></svg>">
-    <meta name="theme-color" content="#f3e1ce" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#1e1915" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f3eee4" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1b1a17" media="(prefers-color-scheme: dark)">
 
     <!-- HTML Meta Tags -->
     <meta name="description" content="Artificial Italian">
@@ -54,10 +54,10 @@
                         <span class="brand-tag">Artificial Italian</span>
                     </span>
                 </a>
-                <div class="persona-switch" id="persona-switch" role="group" aria-label="Choose who you're talking to">
-                    <button type="button" data-persona="claudio" aria-pressed="true" title="Talk to Claudio"><img src="assets/claudio-avatar.jpg" alt="Claudio"></button>
-                    <button type="button" data-persona="claudia" aria-pressed="false" title="Talk to Claudia"><img src="assets/claudia-avatar.svg" alt="Claudia"></button>
-                </div>
+                <button class="persona-switch" id="persona-switch" type="button" aria-label="Switch to Claudia" title="Switch to Claudia">
+                    <img src="assets/claudio-avatar.jpg" alt="" data-persona="claudio" class="active">
+                    <img src="assets/claudia-avatar.svg" alt="" data-persona="claudia">
+                </button>
                 <button class="icon-btn only-mobile" id="close-sidebar" type="button" aria-label="Close sidebar">
                     <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>
                 </button>

@@ -5,11 +5,11 @@
   </defs>
   <g clip-path="url(#frame)" stroke="#1b1716" stroke-linecap="round" stroke-linejoin="round">
     <!-- background -->
-    <rect width="256" height="256" fill="#f2dcd2" stroke="none"/>
-    <path d="M150 0 L256 0 L256 256 L200 256 Z" fill="#b84a62" stroke="none"/>
-    <circle cx="38" cy="58" r="30" fill="#e9b8a8" stroke="none"/>
-    <circle cx="24" cy="128" r="22" fill="#e9b8a8" stroke="none"/>
-    <circle cx="226" cy="40" r="18" fill="#d27a8c" stroke="none"/>
+    <rect width="256" height="256" fill="#f3e6d6" stroke="none"/>
+    <path d="M150 0 L256 0 L256 256 L200 256 Z" fill="#c9675e" stroke="none"/>
+    <circle cx="38" cy="58" r="30" fill="#e8aba2" stroke="none"/>
+    <circle cx="24" cy="128" r="22" fill="#9dbd8f" stroke="none"/>
+    <circle cx="226" cy="40" r="18" fill="#e08d84" stroke="none"/>
 
     <!-- hair, back -->
     <path d="M64 120 C58 70 92 34 132 34 C176 34 204 70 196 124 C194 150 200 176 214 196 L52 196 C62 170 66 146 64 120 Z" fill="#1b1716" stroke-width="5"/>
@@ -39,7 +39,7 @@
     <!-- nose -->
     <path d="M132 118 C130 130 126 138 128 142 C132 144 136 143 138 141" fill="none" stroke-width="4"/>
     <!-- lips -->
-    <path d="M114 154 C122 150 128 152 132 154 C136 152 142 150 150 154 C144 164 120 164 114 154 Z" fill="#b84a62" stroke-width="4"/>
+    <path d="M114 154 C122 150 128 152 132 154 C136 152 142 150 150 154 C144 164 120 164 114 154 Z" fill="#b8524b" stroke-width="4"/>
     <!-- cheeks -->
     <circle cx="104" cy="138" r="7" fill="#e9a99a" stroke="none" opacity="0.7"/>
     <circle cx="160" cy="138" r="7" fill="#e9a99a" stroke="none" opacity="0.7"/>

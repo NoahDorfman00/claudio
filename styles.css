@@ -1,18 +1,22 @@
+/*
+ * A soft Italian flag: both characters share a satin ivory base, and each brings an accent:
+ * sage green for Claudio, soft tomato red for Claudia.
+ */
 :root {
-    --bg: #f3e1ce;
-    --surface: #fff6ee;
-    --surface-2: #f8ebdd;
-    --sidebar: #ecd6bf;
+    --bg: #f3eee4;
+    --surface: #fbf8f2;
+    --surface-2: #f2ece1;
+    --sidebar: #ebe4d6;
     --ink: #231f20;
-    --ink-soft: #5b4f48;
-    --ink-faint: #8a7b70;
-    --line: #dcc3aa;
-    --accent: #d97a4a;
-    --accent-ink: #fff6ee;
-    --accent-soft: #f2c4a8;
-    --code-bg: #fbf3ea;
+    --ink-soft: #57504a;
+    --ink-faint: #8a8178;
+    --line: #dcd3c2;
+    --accent: #568352;
+    --accent-ink: #fbf8f2;
+    --accent-soft: #d4e4cc;
+    --code-bg: #f8f4ec;
     --danger: #b3412a;
-    --shadow: 0 1px 2px rgba(80, 40, 20, 0.06), 0 6px 24px rgba(80, 40, 20, 0.08);
+    --shadow: 0 1px 2px rgba(60, 50, 30, 0.06), 0 6px 24px rgba(60, 50, 30, 0.08);
 
     --font: 'Spectral', Georgia, serif;
     --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -21,81 +25,57 @@
     color-scheme: light;
 }
 
+:root[data-persona="claudia"] {
+    --accent: #b8524b;
+    --accent-soft: #f1d0cb;
+}
+
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --bg: #1e1915;
-        --surface: #2a231e;
-        --surface-2: #322a24;
-        --sidebar: #17130f;
-        --ink: #f3e6d8;
-        --ink-soft: #c9b8a8;
-        --ink-faint: #8f7f72;
-        --line: #42372f;
-        --accent: #e08a5c;
-        --accent-ink: #1e1915;
-        --accent-soft: #5a3624;
-        --code-bg: #15110e;
+        --bg: #1b1a17;
+        --surface: #25231f;
+        --surface-2: #2d2b26;
+        --sidebar: #151411;
+        --ink: #efe9de;
+        --ink-soft: #c4bcae;
+        --ink-faint: #8d867a;
+        --line: #3a3730;
+        --accent: #8dbb86;
+        --accent-ink: #1b1a17;
+        --accent-soft: #2f4a2c;
+        --code-bg: #12110f;
         --danger: #f08a6e;
         --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 24px rgba(0, 0, 0, 0.3);
         color-scheme: dark;
     }
+
+    :root[data-persona="claudia"]:not([data-theme="light"]) {
+        --accent: #e48c84;
+        --accent-soft: #5a2b27;
+    }
 }
 
 :root[data-theme="dark"] {
-    --bg: #1e1915;
-    --surface: #2a231e;
-    --surface-2: #322a24;
-    --sidebar: #17130f;
-    --ink: #f3e6d8;
-    --ink-soft: #c9b8a8;
-    --ink-faint: #8f7f72;
-    --line: #42372f;
-    --accent: #e08a5c;
-    --accent-ink: #1e1915;
-    --accent-soft: #5a3624;
-    --code-bg: #15110e;
+    --bg: #1b1a17;
+    --surface: #25231f;
+    --surface-2: #2d2b26;
+    --sidebar: #151411;
+    --ink: #efe9de;
+    --ink-soft: #c4bcae;
+    --ink-faint: #8d867a;
+    --line: #3a3730;
+    --accent: #8dbb86;
+    --accent-ink: #1b1a17;
+    --accent-soft: #2f4a2c;
+    --code-bg: #12110f;
     --danger: #f08a6e;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 24px rgba(0, 0, 0, 0.3);
     color-scheme: dark;
 }
 
-/* Claudia: raspberry accent on a blush cream, same ink. */
-:root[data-persona="claudia"] {
-    --bg: #f5e4df;
-    --surface: #fff7f4;
-    --surface-2: #f9ebe7;
-    --sidebar: #efd5ce;
-    --line: #e2c3bb;
-    --accent: #b84a62;
-    --accent-ink: #fff7f4;
-    --accent-soft: #f0c4cd;
-    --code-bg: #fcf3f0;
-}
-
-@media (prefers-color-scheme: dark) {
-    :root[data-persona="claudia"]:not([data-theme="light"]) {
-        --bg: #1f1719;
-        --surface: #2b2124;
-        --surface-2: #33272b;
-        --sidebar: #181113;
-        --line: #46353a;
-        --accent: #e57f95;
-        --accent-ink: #1f1719;
-        --accent-soft: #5c2c38;
-        --code-bg: #160f11;
-    }
-}
-
 :root[data-persona="claudia"][data-theme="dark"] {
-    --bg: #1f1719;
-    --surface: #2b2124;
-    --surface-2: #33272b;
-    --sidebar: #181113;
-    --line: #46353a;
-    --accent: #e57f95;
-    --accent-ink: #1f1719;
-    --accent-soft: #5c2c38;
-    --code-bg: #160f11;
+    --accent: #e48c84;
+    --accent-soft: #5a2b27;
 }
 
 body,
@@ -1651,42 +1631,35 @@ svg {
 
 .persona-switch {
     display: flex;
+    align-items: center;
     gap: 2px;
     padding: 3px;
+    border: none;
     border-radius: 999px;
     background: color-mix(in srgb, var(--ink) 7%, transparent);
     flex: none;
+    cursor: pointer;
+    transition: background-color 0.15s;
 }
 
-.persona-switch button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: none;
-    opacity: 0.55;
-    transition: opacity 0.15s, box-shadow 0.15s;
-}
-
-.persona-switch button:hover {
-    opacity: 0.9;
-}
-
-.persona-switch button[aria-pressed="true"] {
-    opacity: 1;
-    box-shadow: 0 0 0 2px var(--accent);
+.persona-switch:hover {
+    background: color-mix(in srgb, var(--ink) 12%, transparent);
 }
 
 .persona-switch img {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     object-fit: cover;
     display: block;
+    opacity: 0.5;
+    transition: opacity 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.persona-switch img.active {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--accent);
+    transform: scale(1.04);
 }
 
 .sidebar-head {

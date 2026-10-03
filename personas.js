@@ -9,7 +9,7 @@ export const PERSONAS = {
         him: 'him',
         avatar: 'assets/claudio-avatar.jpg',
         avatarAlt: 'Illustrated portrait of Claudio in a flat cap',
-        themeColor: { light: '#f3e1ce', dark: '#1e1915' },
+        themeColor: { light: '#f3eee4', dark: '#1b1a17' },
         welcome: {
             greeting: 'Ciao! What\'re we cookin\' today?',
             subtitle: 'Code, homework, dinner plans, or just some company. Pull up a chair.',
@@ -28,7 +28,7 @@ export const PERSONAS = {
         him: 'her',
         avatar: 'assets/claudia-avatar.svg',
         avatarAlt: 'Illustrated portrait of Claudia with her hair in a bun and gold hoop earrings',
-        themeColor: { light: '#f5e4df', dark: '#1f1719' },
+        themeColor: { light: '#f3eee4', dark: '#1b1a17' },
         welcome: {
             greeting: 'Ciao, bella! Come on in.',
             subtitle: 'Code, homework, recipes, or a second opinion. Sit, I\'ll put coffee on.',
