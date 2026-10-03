@@ -315,6 +315,22 @@ async function findOrCreateCustomer(stripe, user) {
     return customer.id;
 }
 
+async function portalUrl(stripe, req, user, flow) {
+    const snap = await userRef(user.uid).get();
+    const customer = snap.get('stripeCustomerId');
+    if (!customer) throw new AccessError(400, 'NO_CUSTOMER', 'No subscription on this account yet.');
+    const back = `${returnOrigin(req)}/?billing=updated`;
+    const params = { customer, return_url: back };
+    const afterCompletion = { type: 'redirect', redirect: { return_url: back } };
+    const subscription = snap.get('stripeSubscriptionId');
+    if (flow === 'cancel' && subscription) {
+        params.flow_data = { type: 'subscription_cancel', subscription_cancel: { subscription }, after_completion: afterCompletion };
+    } else if (flow === 'payment') {
+        params.flow_data = { type: 'payment_method_update', after_completion: afterCompletion };
+    }
+    return (await stripe.billingPortal.sessions.create(params)).url;
+}
+
 exports.api = onRequest(
     {
         secrets: [ANTHROPIC_KEY_ENCRYPTION_KEY, STRIPE_SECRET_KEY, STRIPE_PRICE_ID],
@@ -395,53 +411,38 @@ exports.api = onRequest(
                 }
 
                 // Undo a pending cancellation right here, no trip to Stripe needed.
+                // Cancel at period end, or undo that, right here; no trip to Stripe needed.
+                case 'POST /subscription/cancel':
                 case 'POST /subscription/resume': {
                     requireSignedIn(user);
+                    const cancel = route.endsWith('/cancel');
                     const subId = (await userRef(user.uid).get()).get('stripeSubscriptionId');
                     if (!subId) throw new AccessError(400, 'NO_SUBSCRIPTION', 'No subscription on this account.');
                     try {
                         const current = await stripe.subscriptions.retrieve(subId);
-                        // Portal cancellations set cancel_at_period_end; an explicit cancel date is cleared with ''.
-                        const undo = current.cancel_at_period_end ? { cancel_at_period_end: false } : { cancel_at: '' };
-                        const sub = await stripe.subscriptions.update(subId, undo);
+                        const cancelling = current.cancel_at_period_end || Boolean(current.cancel_at);
+                        let change = null;
+                        if (cancel && !cancelling) change = { cancel_at_period_end: true };
+                        // Cancellations set either cancel_at_period_end or an explicit date, cleared with ''.
+                        if (!cancel && cancelling) change = current.cancel_at_period_end ? { cancel_at_period_end: false } : { cancel_at: '' };
+                        const sub = change ? await stripe.subscriptions.update(subId, change) : current;
                         await syncSubscription(sub, user.uid);
                         res.json({ ok: true });
                     } catch (err) {
-                        // A restricted key without Subscriptions write: send them to the portal instead.
+                        // A restricted key without Subscriptions write: do it on Stripe's portal instead.
                         if (err.type !== 'StripePermissionError') throw err;
-                        console.warn('[api] STRIPE_SECRET_KEY needs Subscriptions: Write to resume in-app');
-                        const session = await stripe.billingPortal.sessions.create({
-                            customer: (await userRef(user.uid).get()).get('stripeCustomerId'),
-                            return_url: `${returnOrigin(req)}/?billing=updated`,
-                        });
-                        res.json({ url: session.url });
+                        console.warn('[api] STRIPE_SECRET_KEY needs Subscriptions: Write to change subscriptions in-app');
+                        res.json({ url: await portalUrl(stripe, req, user, cancel ? 'cancel' : null) });
                     }
                     return;
                 }
 
-                // Stripe's hosted billing portal. A flow ('cancel' or 'payment') opens straight onto
-                // that one screen and redirects back here when it's done; without one it's the full
-                // portal (invoices), which only has a "Return to Claudio" link.
+                // Stripe's hosted billing portal. 'payment' opens straight onto the card screen and
+                // redirects back here when it's done; without a flow it's the full portal
+                // (invoices), which only has a "Return to Claudio" link.
                 case 'POST /portal': {
                     requireSignedIn(user);
-                    const snap = await userRef(user.uid).get();
-                    const customer = snap.get('stripeCustomerId');
-                    if (!customer) throw new AccessError(400, 'NO_CUSTOMER', 'No subscription on this account yet.');
-                    const back = `${returnOrigin(req)}/?billing=updated`;
-                    const params = { customer, return_url: back };
-                    const subscription = snap.get('stripeSubscriptionId');
-                    const afterCompletion = { type: 'redirect', redirect: { return_url: back } };
-                    if (req.body?.flow === 'cancel' && subscription) {
-                        params.flow_data = {
-                            type: 'subscription_cancel',
-                            subscription_cancel: { subscription },
-                            after_completion: afterCompletion,
-                        };
-                    } else if (req.body?.flow === 'payment') {
-                        params.flow_data = { type: 'payment_method_update', after_completion: afterCompletion };
-                    }
-                    const session = await stripe.billingPortal.sessions.create(params);
-                    res.json({ url: session.url });
+                    res.json({ url: await portalUrl(stripe, req, user, req.body?.flow) });
                     return;
                 }
 

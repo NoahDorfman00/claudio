@@ -339,6 +339,35 @@ async function openPortal(flow) {
     }
 }
 
+/** Cancel at period end, or undo that, then show the account again. */
+async function changeSubscription(action) {
+    try {
+        const { url } = await api(`/subscription/${action}`, { method: 'POST' });
+        if (url) return goToStripe(url); // key can't change subscriptions: Stripe's portal does it
+        await refreshAccount();
+        openAccount();
+    } catch (err) {
+        alertDialog('Couldn\'t update your subscription', err.message);
+    }
+}
+
+function confirmCancel(until) {
+    openDialog((body, close) => {
+        body.append(
+            text('h2', 'dialog-title', 'Cancel your subscription?'),
+            text('p', 'dialog-sub', `You'll stay a regular until ${until} and won't be charged again. You can change your mind anytime before then.`),
+        );
+        const confirm = button('Cancel subscription', 'btn primary');
+        confirm.addEventListener('click', () => busy(confirm, async () => {
+            close();
+            await changeSubscription('cancel');
+        }));
+        const foot = el('div', 'dialog-foot');
+        foot.append(button('Keep it', 'btn ghost', close), confirm);
+        body.append(foot);
+    });
+}
+
 function alertDialog(title, message) {
     openDialog((body, close) => {
         body.append(text('h2', 'dialog-title', title), text('p', 'dialog-sub', message));
@@ -613,16 +642,8 @@ export function openAccount() {
                     const r = e.currentTarget;
                     r.disabled = true;
                     r.querySelector('small').textContent = 'One sec…';
-                    try {
-                        const { url } = await api('/subscription/resume', { method: 'POST' });
-                        if (url) return goToStripe(url);
-                        await refreshAccount();
-                        close();
-                        openAccount();
-                    } catch (err) {
-                        close();
-                        alertDialog('Couldn\'t update your subscription', err.message);
-                    }
+                    close();
+                    await changeSubscription('resume');
                 }),
                 row('Update payment method', 'Change the card you pay with', () => openPortal('payment')),
                 row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()),
@@ -631,7 +652,10 @@ export function openAccount() {
             rows.append(
                 row('Update payment method', 'Change the card you pay with', () => openPortal('payment')),
                 row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()),
-                row('Cancel subscription', `You'll keep access until ${a.allowanceResets}`, () => openPortal('cancel')),
+                row('Cancel subscription', `You'll keep access until ${a.allowanceResets}`, () => {
+                    close();
+                    confirmCancel(a.allowanceResets);
+                }),
             );
         } else if (a.subscriptionStatus === 'past_due') {
             rows.append(row('Billing history', 'Invoices and receipts on Stripe', () => openPortal()));
