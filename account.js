@@ -154,8 +154,13 @@ export function isSubscriber() {
 function planPrice() {
     const p = account?.plan;
     if (!p) return null;
-    const amount = new Intl.NumberFormat(undefined, { style: 'currency', currency: p.currency.toUpperCase() })
-        .format(p.amount / 100);
+    const whole = p.amount % 100 === 0;
+    const amount = new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: p.currency.toUpperCase(),
+        minimumFractionDigits: whole ? 0 : 2,
+        maximumFractionDigits: whole ? 0 : 2,
+    }).format(p.amount / 100);
     return `${amount}/${p.interval}`;
 }
 
@@ -226,7 +231,9 @@ function openDialog(build) {
     dialog.append(x, body);
     build(body, close);
     document.body.appendChild(dialog);
+    dialog.tabIndex = -1;
     dialog.showModal();
+    dialog.focus(); // otherwise the close button opens with a focus ring
     current = dialog;
     dialog.close = close;
     return dialog;
@@ -339,23 +346,34 @@ function alertDialog(title, message) {
 
 export function openKeyDialog({ error } = {}) {
     openDialog((body, close) => {
+        const signedIn = account && !account.isAnonymous;
+        const bk = browserKey();
+        const saved = signedIn ? account.keyHint : null;
+        const hasKey = Boolean(bk || saved);
+
         body.append(
-            text('h2', 'dialog-title', 'Bring your own API key'),
-            el('p', 'dialog-sub', 'Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>. Claudio uses it only to answer you; your usage is billed to your Anthropic account.'),
+            text('h2', 'dialog-title', hasKey ? 'Your API key' : 'Use your own API key'),
+            el('p', 'dialog-sub', 'Pay Anthropic directly for what you use, with no monthly limit. Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>.'),
         );
+
+        if (hasKey) {
+            const days = bk ? Math.max(1, Math.ceil((bk.expiresAt - Date.now()) / 86400000)) : 0;
+            body.append(text('p', 'key-current', saved
+                ? `Key ${saved} is saved to your account, encrypted.`
+                : `Key ${bk.hint} is saved in this browser for ${days} more day${days === 1 ? '' : 's'}.`));
+        }
 
         const input = el('input', 'field');
         input.type = 'password';
-        input.placeholder = 'sk-ant-…';
+        input.placeholder = hasKey ? 'Paste a new key to replace it' : 'sk-ant-…';
         input.autocomplete = 'off';
         input.spellcheck = false;
         input.setAttribute('aria-label', 'Anthropic API key');
 
-        const signedIn = account && !account.isAnonymous;
         const choice = el('div', 'choices');
         choice.innerHTML = `
             <label class="choice"><input type="radio" name="where" value="account" ${signedIn ? 'checked' : ''}>
-                <span><b>Save to my account</b><small>Encrypted, works on any device you sign in on.${signedIn ? '' : ' You\'ll sign in first.'}</small></span></label>
+                <span><b>Save to my account</b><small>Encrypted, works on any device you sign in on.${signedIn ? '' : ' You\'ll sign in with Google first.'}</small></span></label>
             <label class="choice"><input type="radio" name="where" value="browser" ${signedIn ? '' : 'checked'}>
                 <span><b>Keep in this browser for ${BROWSER_KEY_DAYS} days</b><small>Never stored on Claudio's server. Sent along with each message.</small></span></label>`;
 
@@ -363,7 +381,17 @@ export function openKeyDialog({ error } = {}) {
         if (error) err.show(error);
         const save = button('Save key', 'btn primary');
         const foot = el('div', 'dialog-foot');
-        foot.append(button('Cancel', 'btn ghost', close), save);
+        if (hasKey) {
+            foot.append(button('Remove key', 'btn ghost danger', async (e) => {
+                await busy(e.currentTarget, async () => {
+                    if (bk) clearBrowserKey();
+                    if (saved) await api('/key', { method: 'POST', body: { apiKey: '' } });
+                    await refreshAccount();
+                });
+                close();
+            }));
+        }
+        foot.append(el('span', 'spacer'), button('Cancel', 'btn ghost', close), save);
         body.append(input, choice, err, foot);
         setTimeout(() => input.focus(), 50);
 
@@ -430,156 +458,171 @@ function authErrorMessage(err) {
 
 async function afterSignIn(then) {
     await refreshAccount();
+    if (isSubscriber() || account?.keyHint) accessGranted();
     if (then) await then();
-    else if (isSubscriber() || account?.keyHint) accessGranted();
 }
 
 const GOOGLE_ICON = '<svg viewBox="0 0 48 48" class="g"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 019.5 24c0-1.6.3-3.2.8-4.6l-7.9-6.1A24 24 0 000 24c0 3.9.9 7.5 2.6 10.7l8-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-5 2.3-8.2 2.3-6.2 0-11.5-4.2-13.4-9.9l-8 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
 
+/** Google sign-in popup. Must be called straight from a click so the popup isn't blocked. */
+async function signInWithGoogle(then) {
+    const provider = new GoogleAuthProvider();
+    if (auth.currentUser?.isAnonymous) {
+        try {
+            // Linking keeps the guest's uid, so trial usage carries over.
+            await linkWithPopup(auth.currentUser, provider);
+        } catch (e) {
+            if (e.code !== 'auth/credential-already-in-use') throw e;
+            // Existing account: switch to it (the guest session's trial stays behind).
+            await signInWithCredential(auth, GoogleAuthProvider.credentialFromError(e));
+        }
+    } else {
+        await signInWithPopup(auth, provider);
+    }
+    await auth.currentUser.getIdToken(true); // fresh token: no longer anonymous
+    await afterSignIn(then);
+}
+
+function googleButton(err, onBefore, then) {
+    const google = el('button', 'btn google', `${GOOGLE_ICON}<span>Continue with Google</span>`);
+    google.type = 'button';
+    google.addEventListener('click', async () => {
+        err.show('');
+        try {
+            const done = signInWithGoogle(then);
+            onBefore?.();
+            await done;
+        } catch (e) {
+            err.show(authErrorMessage(e));
+        }
+    });
+    return google;
+}
+
 export function openSignIn({ reason, then } = {}) {
     openDialog((body, close) => {
-        const google = el('button', 'btn google', `${GOOGLE_ICON}<span>Continue with Google</span>`);
-        google.type = 'button';
         const err = errorLine();
         body.append(
             text('h2', 'dialog-title', 'Sign in'),
             text('p', 'dialog-sub', reason || 'Sign in to save your API key or become a regular. Your chats stay on this device.'),
-            google,
+            googleButton(err, null, async () => {
+                close();
+                if (then) await then();
+            }),
             err,
         );
-
-        google.addEventListener('click', async () => {
-            err.show('');
-            const provider = new GoogleAuthProvider();
-            try {
-                if (auth.currentUser?.isAnonymous) {
-                    try {
-                        // Linking keeps the guest's uid, so trial usage carries over.
-                        await linkWithPopup(auth.currentUser, provider);
-                    } catch (e) {
-                        if (e.code !== 'auth/credential-already-in-use') throw e;
-                        // Existing account: switch to it (the guest session's trial stays behind).
-                        await signInWithCredential(auth, GoogleAuthProvider.credentialFromError(e));
-                    }
-                } else {
-                    await signInWithPopup(auth, provider);
-                }
-                close();
-                await auth.currentUser.getIdToken(true); // fresh token: no longer anonymous
-                await afterSignIn(then);
-            } catch (e) {
-                err.show(authErrorMessage(e));
-            }
-        });
     });
 }
 
 // ---------- Account ----------
 
+function meter(percent, label) {
+    const m = el('div', 'meter');
+    m.setAttribute('role', 'progressbar');
+    m.setAttribute('aria-valuenow', String(percent));
+    m.setAttribute('aria-valuemin', '0');
+    m.setAttribute('aria-valuemax', '100');
+    m.setAttribute('aria-label', label);
+    const fill = el('span');
+    fill.style.width = `${percent}%`;
+    m.appendChild(fill);
+    return m;
+}
+
+/** A settings-style row: title, optional subtitle, chevron. */
+function row(title, subtitle, onClick) {
+    const b = el('button', 'acct-row', '<span class="acct-row-text"><b></b><small></small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>');
+    b.type = 'button';
+    b.querySelector('b').textContent = title;
+    if (subtitle) b.querySelector('small').textContent = subtitle;
+    else b.querySelector('small').remove();
+    b.addEventListener('click', onClick);
+    return b;
+}
+
 export function openAccount() {
     openDialog((body, close) => {
         const a = account;
-        const signedIn = a && !a.isAnonymous;
+        if (!a) {
+            body.append(text('h2', 'dialog-title', 'One sec…'), text('p', 'dialog-sub', 'Still loading your account.'));
+            return;
+        }
+        const signedIn = !a.isAnonymous;
+        const subscribed = isSubscriber();
+        const price = planPrice();
+
         body.append(text('h2', 'dialog-title', signedIn ? displayName() : 'You\'re a guest'));
         if (signedIn && a.email && displayName() !== a.email) body.append(text('p', 'dialog-sub', a.email));
-        if (!signedIn) body.append(text('p', 'dialog-sub', 'Sign in to save your API key or become a regular.'));
 
-        // Plan
-        const plan = el('section', 'acct-section');
-        plan.append(text('h3', '', 'Plan'));
-        const price = planPrice();
-        if (a?.subscriptionStatus === 'subscribed' || a?.subscriptionStatus === 'pending_cancellation') {
-            plan.append(text('p', '', a.subscriptionStatus === 'pending_cancellation'
-                ? 'You\'re a regular until the end of this billing period.'
-                : 'You\'re a regular. Grazie!'));
-            const meter = el('div', 'meter');
-            meter.setAttribute('role', 'progressbar');
-            meter.setAttribute('aria-valuenow', String(a.allowanceUsedPercent));
-            meter.setAttribute('aria-valuemin', '0');
-            meter.setAttribute('aria-valuemax', '100');
-            meter.setAttribute('aria-label', 'Monthly allowance used');
-            const fill = el('span');
-            fill.style.width = `${a.allowanceUsedPercent}%`;
-            meter.appendChild(fill);
-            plan.append(meter, text('p', 'muted', `${a.allowanceUsedPercent}% of this month's allowance used. Resets ${a.allowanceResets}.`));
-            plan.append(button('Manage billing', 'btn', openPortal));
-        } else if (a?.subscriptionStatus === 'past_due') {
-            plan.append(text('p', '', 'Your last payment didn\'t go through. Update your card to keep chatting.'));
-            plan.append(button('Update payment', 'btn primary', openPortal));
+        // Status
+        const status = el('div', 'acct-status');
+        if (subscribed) {
+            status.append(
+                text('p', 'acct-status-title', a.subscriptionStatus === 'pending_cancellation' ? 'Regular until the end of this billing period' : 'You\'re a regular. Grazie!'),
+                meter(a.allowanceUsedPercent, 'Monthly allowance used'),
+                text('p', 'muted', `${a.allowanceUsedPercent}% of this month's allowance used · resets ${a.allowanceResets.replace(/^on /, '')}`),
+            );
+        } else if (a.subscriptionStatus === 'past_due') {
+            status.append(
+                text('p', 'acct-status-title', 'Your last payment didn\'t go through'),
+                text('p', 'muted', 'Update your card to keep chatting.'),
+                button('Update payment', 'btn primary', openPortal),
+            );
+        } else if (browserKey() || a.keyHint) {
+            status.append(
+                text('p', 'acct-status-title', 'Using your own API key'),
+                text('p', 'muted', 'No limits here. Usage is billed to your Anthropic account.'),
+            );
         } else {
-            plan.append(text('p', '', a
-                ? `Free tasting menu: ${a.freeMessagesLeft} of ${a.freeMessages} messages left.`
-                : 'Loading…'));
-            plan.append(button(`Become a regular${price ? ` · ${price}` : ''}`, 'btn primary', () => {
+            const used = a.freeMessages - a.freeMessagesLeft;
+            status.append(
+                text('p', 'acct-status-title', 'Free tasting menu'),
+                meter(Math.round((used / a.freeMessages) * 100), 'Free messages used'),
+                text('p', 'muted', `${a.freeMessagesLeft} of ${a.freeMessages} free messages left`),
+            );
+        }
+        body.append(status);
+
+        // Main action for guests: sign in right here.
+        if (!signedIn) {
+            const err = errorLine();
+            body.append(
+                googleButton(err, null, async () => close()),
+                text('p', 'acct-hint', 'Sign in to save your key or become a regular. Your chats stay on this device.'),
+                err,
+            );
+        }
+
+        // Everything else is a quiet row.
+        const rows = el('div', 'acct-rows');
+        if (subscribed || a.subscriptionStatus === 'past_due') {
+            rows.append(row('Manage billing', 'Cancel, update your card, see invoices', openPortal));
+        } else {
+            rows.append(row('Become a regular', price ? `${price} · keep chatting all month` : 'Keep chatting all month', () => {
                 close();
                 startCheckout();
             }));
         }
-        body.append(plan);
-
-        // API key
-        const keys = el('section', 'acct-section');
-        keys.append(text('h3', '', 'Your API key'));
         const bk = browserKey();
-        if (bk) {
-            const days = Math.max(1, Math.ceil((bk.expiresAt - Date.now()) / 86400000));
-            keys.append(text('p', '', `Key ${bk.hint} is saved in this browser for ${days} more day${days === 1 ? '' : 's'}.`));
-            keys.append(button('Remove from this browser', 'btn ghost', () => {
-                clearBrowserKey();
-                emit();
-                close();
-                openAccount();
-            }));
-        }
-        if (signedIn && a.keyHint) {
-            keys.append(text('p', '', `Key ${a.keyHint} is saved to your account, encrypted.`));
-            const row = el('div', 'row');
-            row.append(
-                button('Replace', 'btn', () => {
-                    close();
-                    openKeyDialog();
-                }),
-                button('Remove', 'btn ghost', async (e) => {
-                    await busy(e.currentTarget, async () => {
-                        await api('/key', { method: 'POST', body: { apiKey: '' } });
-                        await refreshAccount();
-                    });
-                    close();
-                    openAccount();
-                }),
-            );
-            keys.append(row);
-        }
-        if (signedIn && !a.keyHint) {
-            keys.append(text('p', 'muted', bk
-                ? 'Save a key to your account to use it on any device, encrypted.'
-                : 'Use your own Anthropic API key instead of the free messages or a subscription.'));
-            keys.append(button('Save a key to my account', 'btn', () => {
+        const keyHint = signedIn ? a.keyHint : null;
+        rows.append(row(
+            keyHint || bk ? `Your API key ${keyHint || bk.hint}` : 'Use your own API key',
+            keyHint ? 'Saved to your account' : bk ? 'Saved in this browser' : 'Pay Anthropic directly, no monthly limit',
+            () => {
                 close();
                 openKeyDialog();
-            }));
-        } else if (!signedIn && !bk) {
-            keys.append(text('p', 'muted', 'Use your own Anthropic API key instead of the free messages or a subscription.'));
-            keys.append(button('Add a key', 'btn', () => {
-                close();
-                openKeyDialog();
-            }));
-        }
-        body.append(keys);
+            },
+        ));
+        body.append(rows);
 
-        const foot = el('div', 'dialog-foot');
         if (signedIn) {
+            const foot = el('div', 'dialog-foot');
             foot.append(button('Sign out', 'btn ghost', async () => {
                 close();
                 await signOut(auth); // onAuthStateChanged starts a fresh guest session
             }));
-        } else {
-            foot.append(button('Sign in with Google', 'btn primary', () => {
-                close();
-                openSignIn();
-            }));
+            body.append(foot);
         }
-        body.append(foot);
     });
 }
 

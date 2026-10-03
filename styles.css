@@ -1462,31 +1462,102 @@ svg {
     font-size: 0.85rem;
 }
 
-.acct-section {
-    border-top: 1px solid var(--line);
-    padding-top: 12px;
+.dialog:focus {
+    outline: none;
 }
 
-.acct-section h3 {
-    margin: 0 0 4px;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+.dialog-foot .spacer {
+    flex: 1;
+}
+
+.btn.danger {
+    color: var(--danger);
+}
+
+.acct-status {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+}
+
+.acct-status p {
+    margin: 0;
+}
+
+.acct-status .btn {
+    margin-top: 10px;
+}
+
+.acct-status-title {
+    font-weight: 700;
+}
+
+.acct-status .muted,
+.acct-hint {
+    color: var(--ink-soft);
+    font-size: 0.88rem;
+}
+
+.acct-hint {
+    margin: -4px 0 0;
+    text-align: center;
+}
+
+.acct-rows {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--line);
+    margin-top: 4px;
+}
+
+.acct-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 4px;
+    color: var(--ink);
+}
+
+.acct-row:hover {
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.acct-row svg {
+    width: 16px;
+    height: 16px;
     color: var(--ink-faint);
 }
 
-.acct-section p {
-    margin: 0 0 10px;
-}
-
-.acct-section .muted {
-    color: var(--ink-soft);
-    font-size: 0.9rem;
-}
-
-.acct-section .row {
+.acct-row-text {
+    flex: 1;
+    min-width: 0;
     display: flex;
-    gap: 8px;
+    flex-direction: column;
+    line-height: 1.3;
+}
+
+.acct-row-text b {
+    font-weight: 500;
+}
+
+.acct-row-text small {
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
+
+.key-current {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    font-size: 0.92rem;
 }
 
 .meter {
@@ -1495,7 +1566,7 @@ svg {
     background: var(--surface-2);
     border: 1px solid var(--line);
     overflow: hidden;
-    margin: 4px 0 8px;
+    margin: 8px 0 6px;
 }
 
 .meter span {
