@@ -328,10 +328,18 @@ exports.api = onRequest(
 
             switch (route) {
                 case 'GET /account': {
-                    const [account, plan] = await Promise.all([
+                    let [account, plan] = await Promise.all([
                         accountSummary(user),
                         planInfo(stripe),
                     ]);
+                    // Subscriptions synced before period dates were stored: fetch them once.
+                    if (!account.hasPeriodDates && ['subscribed', 'pending_cancellation', 'past_due'].includes(account.subscriptionStatus)) {
+                        const subId = (await userRef(user.uid).get()).get('stripeSubscriptionId');
+                        if (subId) {
+                            await syncSubscription(await stripe.subscriptions.retrieve(subId), user.uid);
+                            account = await accountSummary(user);
+                        }
+                    }
                     res.json({ ...account, plan });
                     return;
                 }
@@ -387,14 +395,23 @@ exports.api = onRequest(
                 }
 
                 // Stripe's hosted portal handles cancel, resume, card updates and invoices.
+                // { flow: 'cancel' } opens straight onto the cancel screen and comes back here after.
                 case 'POST /portal': {
                     requireSignedIn(user);
-                    const customer = (await userRef(user.uid).get()).get('stripeCustomerId');
+                    const snap = await userRef(user.uid).get();
+                    const customer = snap.get('stripeCustomerId');
                     if (!customer) throw new AccessError(400, 'NO_CUSTOMER', 'No subscription on this account yet.');
-                    const session = await stripe.billingPortal.sessions.create({
-                        customer,
-                        return_url: `${returnOrigin(req)}/`,
-                    });
+                    const back = `${returnOrigin(req)}/?billing=updated`;
+                    const params = { customer, return_url: back };
+                    const subscription = snap.get('stripeSubscriptionId');
+                    if (req.body?.flow === 'cancel' && subscription) {
+                        params.flow_data = {
+                            type: 'subscription_cancel',
+                            subscription_cancel: { subscription },
+                            after_completion: { type: 'redirect', redirect: { return_url: back } },
+                        };
+                    }
+                    const session = await stripe.billingPortal.sessions.create(params);
                     res.json({ url: session.url });
                     return;
                 }
@@ -444,10 +461,17 @@ async function syncSubscription(sub, uid = null) {
     const currentSubId = (await userRef(uid).get()).get('stripeSubscriptionId');
     // A late event about an old, ended subscription mustn't clobber a newer active one.
     if (currentSubId && currentSubId !== sub.id && status === 'unsubscribed') return;
+    // Billing period dates live on the subscription items in current Stripe API versions.
+    const items = sub.items?.data || [];
+    const periodStart = Math.max(0, ...items.map((i) => i.current_period_start || 0)) || null;
+    const periodEnd = Math.max(0, ...items.map((i) => i.current_period_end || 0)) || null;
     await userRef(uid).set({
         subscriptionStatus: status,
         stripeSubscriptionId: sub.id,
         stripeCustomerId: typeof sub.customer === 'string' ? sub.customer : sub.customer?.id,
+        periodStart,
+        periodEnd,
+        cancelAt: sub.cancel_at || (sub.cancel_at_period_end ? periodEnd : null),
     }, { merge: true });
 }
 

@@ -169,6 +169,7 @@ export function statusLine() {
     if (!account) return 'Loading…';
     const bk = browserKey();
     if (isSubscriber()) {
+        if (account.endsOn) return `Regular until ${account.endsOn}`;
         if (account.allowanceUsedPercent >= 100) return 'Regular · allowance used up';
         return `Regular · ${account.allowanceUsedPercent}% of allowance used`;
     }
@@ -324,9 +325,9 @@ export async function startCheckout() {
     }
 }
 
-async function openPortal() {
+async function openPortal(flow) {
     try {
-        const { url } = await api('/portal', { method: 'POST' });
+        const { url } = await api('/portal', { method: 'POST', body: flow ? { flow } : undefined });
         location.href = url;
     } catch (err) {
         alertDialog('Couldn\'t open billing', err.message);
@@ -556,17 +557,23 @@ export function openAccount() {
 
         // Status
         const status = el('div', 'acct-status');
-        if (subscribed) {
+        if (subscribed && a.subscriptionStatus === 'pending_cancellation') {
             status.append(
-                text('p', 'acct-status-title', a.subscriptionStatus === 'pending_cancellation' ? 'Regular until the end of this billing period' : 'You\'re a regular. Grazie!'),
+                text('p', 'acct-status-title', `Regular until ${a.endsOn || a.allowanceResets}`),
+                meter(a.allowanceUsedPercent, 'Allowance used'),
+                text('p', 'muted', `${a.allowanceUsedPercent}% of your allowance used · you won't be charged again`),
+            );
+        } else if (subscribed) {
+            status.append(
+                text('p', 'acct-status-title', 'You\'re a regular. Grazie!'),
                 meter(a.allowanceUsedPercent, 'Monthly allowance used'),
-                text('p', 'muted', `${a.allowanceUsedPercent}% of this month's allowance used · resets ${a.allowanceResets.replace(/^on /, '')}`),
+                text('p', 'muted', `${a.allowanceUsedPercent}% of this month's allowance used · resets ${a.allowanceResets}`),
             );
         } else if (a.subscriptionStatus === 'past_due') {
             status.append(
                 text('p', 'acct-status-title', 'Your last payment didn\'t go through'),
                 text('p', 'muted', 'Update your card to keep chatting.'),
-                button('Update payment', 'btn primary', openPortal),
+                button('Update payment', 'btn primary', () => openPortal()),
             );
         } else if (browserKey() || a.keyHint) {
             status.append(
@@ -595,8 +602,18 @@ export function openAccount() {
 
         // Everything else is a quiet row.
         const rows = el('div', 'acct-rows');
-        if (subscribed || a.subscriptionStatus === 'past_due') {
-            rows.append(row('Manage billing', 'Cancel, update your card, see invoices', openPortal));
+        if (a.subscriptionStatus === 'pending_cancellation') {
+            rows.append(
+                row('Keep my subscription', 'Undo the cancellation', () => openPortal()),
+                row('Manage billing', 'Update your card, see invoices', () => openPortal()),
+            );
+        } else if (subscribed) {
+            rows.append(
+                row('Manage billing', 'Update your card, see invoices', () => openPortal()),
+                row('Cancel subscription', `You'll keep access until ${a.allowanceResets}`, () => openPortal('cancel')),
+            );
+        } else if (a.subscriptionStatus === 'past_due') {
+            rows.append(row('Manage billing', 'Update your card, see invoices', () => openPortal()));
         } else {
             rows.append(row('Become a regular', price ? `${price} · keep chatting all month` : 'Keep chatting all month', () => {
                 close();
@@ -626,11 +643,27 @@ export function openAccount() {
     });
 }
 
-// ---------- Returning from Stripe Checkout ----------
+// ---------- Returning from Stripe ----------
+
+// Back from the billing portal: the webhook may land a moment after the redirect, so look a
+// few times for the change.
+async function handleBillingReturn(params) {
+    params.delete('billing');
+    const qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+    await signedInUser();
+    const before = JSON.stringify([account?.subscriptionStatus, account?.endsOn]);
+    for (let i = 0; i < 6; i++) {
+        await refreshAccount();
+        if (account && JSON.stringify([account.subscriptionStatus, account.endsOn]) !== before && i > 0) break;
+        await new Promise((r) => setTimeout(r, 1500));
+    }
+}
 
 export async function handleCheckoutReturn(toast) {
     const params = new URLSearchParams(location.search);
     const result = params.get('checkout');
+    if (params.has('billing')) return handleBillingReturn(params);
     if (!result) return;
     params.delete('checkout');
     const qs = params.toString();

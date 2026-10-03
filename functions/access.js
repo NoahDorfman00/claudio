@@ -3,7 +3,8 @@
 //
 // Firestore layout (clients have no direct access; see firestore.rules):
 //   users/{uid}                 { freeMessagesUsed, subscriptionStatus, stripeCustomerId,
-//                                 anthropicKeyHint, usageMonth, usageMicros, email }
+//                                 anthropicKeyHint, periodStart, periodEnd, cancelAt,
+//                                 usagePeriod, usageMicros, email }
 //   users/{uid}/private/apiKey  { encrypted, updatedAt }
 //   trialIps/{sha256(ip)}       { day, count }
 
@@ -68,10 +69,6 @@ function today() {
     return new Date().toISOString().slice(0, 10);
 }
 
-function thisMonth() {
-    return new Date().toISOString().slice(0, 7);
-}
-
 async function claimTrialMessage(uid, ip) {
     const ipRef = db.collection('trialIps').doc(crypto.createHash('sha256').update(ip).digest('hex'));
     const day = today();
@@ -100,10 +97,45 @@ async function claimTrialMessage(uid, ip) {
     return { refund, left };
 }
 
+function addMonth(seconds) {
+    const d = new Date(seconds * 1000);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    return Math.floor(d.getTime() / 1000);
+}
+
+/**
+ * The subscriber's current billing period, which the allowance follows (subscribed Oct 3 ->
+ * resets Nov 3). periodStart/periodEnd come from Stripe via the webhook. If a renewal webhook
+ * is late, roll forward a month at a time so the allowance still resets on time.
+ */
+function billingPeriod(data) {
+    let { periodStart: start, periodEnd: end } = data;
+    if (!start || !end) {
+        // No Stripe dates yet: fall back to the calendar month.
+        const now = new Date();
+        start = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000);
+        end = Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1) / 1000);
+    }
+    const nowSec = Date.now() / 1000;
+    while (end <= nowSec) {
+        start = end;
+        end = addMonth(end);
+    }
+    return { key: String(start), end };
+}
+
+function spentThisPeriod(data) {
+    return data.usagePeriod === billingPeriod(data).key ? data.usageMicros || 0 : 0;
+}
+
+function formatDate(seconds) {
+    return new Date(seconds * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/New_York' });
+}
+
 async function checkSubscriberAllowance(uid, data) {
-    const spent = data.usageMonth === thisMonth() ? data.usageMicros || 0 : 0;
-    if (spent >= SUBSCRIBER_MONTHLY_BUDGET_MICROS) {
-        throw new AccessError(429, 'MONTHLY_LIMIT', `You've used this month's allowance. It resets ${resetDate()}, or add your own API key to keep going.`);
+    if (spentThisPeriod(data) >= SUBSCRIBER_MONTHLY_BUDGET_MICROS) {
+        const resets = formatDate(billingPeriod(data).end);
+        throw new AccessError(429, 'MONTHLY_LIMIT', `You've used this month's allowance. It resets on ${resets}, or add your own API key to keep going.`);
     }
 }
 
@@ -121,25 +153,17 @@ function costMicros(usage) {
 
 /** Add a finished message's cost to the subscriber's month. Returns the percent of the allowance used. */
 async function recordSubscriberUsage(uid, micros) {
-    const month = thisMonth();
     let total = 0;
     await db.runTransaction(async (tx) => {
-        const snap = await tx.get(userRef(uid));
-        const spent = snap.get('usageMonth') === month ? snap.get('usageMicros') || 0 : 0;
-        total = spent + micros;
-        tx.set(userRef(uid), { usageMonth: month, usageMicros: total }, { merge: true });
+        const data = (await tx.get(userRef(uid))).data() || {};
+        total = spentThisPeriod(data) + micros;
+        tx.set(userRef(uid), { usagePeriod: billingPeriod(data).key, usageMicros: total }, { merge: true });
     });
     return allowancePercent(total);
 }
 
 function allowancePercent(micros) {
     return Math.min(100, Math.round((micros / SUBSCRIBER_MONTHLY_BUDGET_MICROS) * 100));
-}
-
-function resetDate() {
-    const now = new Date();
-    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-    return `on ${next.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })}`;
 }
 
 /**
@@ -188,7 +212,6 @@ async function resolvePayer({ user, browserKey, ip, ownerKey, encryptionKey }) {
 async function accountSummary(user) {
     const data = (await userRef(user.uid).get()).data() || {};
     const used = data.freeMessagesUsed || 0;
-    const month = thisMonth();
     return {
         uid: user.uid,
         email: user.email,
@@ -196,8 +219,11 @@ async function accountSummary(user) {
         freeMessages: FREE_MESSAGES,
         freeMessagesLeft: Math.max(0, FREE_MESSAGES - used),
         subscriptionStatus: user.isAnonymous ? 'unsubscribed' : data.subscriptionStatus || 'unsubscribed',
-        allowanceUsedPercent: allowancePercent(data.usageMonth === month ? data.usageMicros || 0 : 0),
-        allowanceResets: resetDate(),
+        allowanceUsedPercent: allowancePercent(spentThisPeriod(data)),
+        // When the allowance resets (renewal), or when access ends if the subscription is cancelled.
+        allowanceResets: formatDate(billingPeriod(data).end),
+        endsOn: data.subscriptionStatus === 'pending_cancellation' && data.cancelAt ? formatDate(data.cancelAt) : null,
+        hasPeriodDates: Boolean(data.periodEnd),
         keyHint: user.isAnonymous ? null : data.anthropicKeyHint || null,
     };
 }
