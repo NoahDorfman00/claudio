@@ -742,13 +742,36 @@ thinkBtn.addEventListener('click', () => {
     try { localStorage.setItem('claudio.effort', effort); } catch {}
 });
 
-document.querySelectorAll('.suggestion').forEach((b) => {
-    b.addEventListener('click', () => {
-        input.value = b.textContent;
-        autosize();
-        form.requestSubmit();
-    });
+$('suggestions').addEventListener('click', (e) => {
+    const b = e.target.closest('.suggestion');
+    if (!b) return;
+    input.value = b.textContent;
+    autosize();
+    form.requestSubmit();
 });
+
+// Today's greeting and suggestions, written by Claude once a day on the server. The static
+// ones in index.html stay if this is slow or fails.
+async function loadWelcome() {
+    try {
+        const res = await fetch(`${acct.API_BASE}/api/welcome`, { signal: AbortSignal.timeout(1500) });
+        const { welcome } = await res.json();
+        if (welcome) {
+            $('empty-title').textContent = welcome.greeting;
+            $('empty-sub').textContent = welcome.subtitle;
+            $('suggestions').replaceChildren(...welcome.suggestions.map((text) => {
+                const b = el('button', 'suggestion');
+                b.type = 'button';
+                b.textContent = text;
+                return b;
+            }));
+        }
+    } catch {
+        // keep the defaults
+    } finally {
+        empty.classList.remove('loading');
+    }
+}
 
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -992,6 +1015,7 @@ try {
 
 renderAccountButton();
 acct.handleCheckoutReturn(toast);
+loadWelcome();
 
 const startId = location.hash.slice(1);
 if (startId) openChat(startId);

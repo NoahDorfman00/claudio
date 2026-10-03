@@ -4,6 +4,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const Stripe = require('stripe');
 const { SYSTEM_PROMPT } = require('./prompt');
 const { encryptApiKey, apiKeyHint } = require('./keyCrypto');
+const { getWelcome } = require('./welcome');
 const {
     db, userRef, keyRef, AccessError, verifyUser, clientIp, resolvePayer, accountSummary, API_KEY_PATTERN,
     costMicros, recordSubscriberUsage,
@@ -333,11 +334,18 @@ async function portalUrl(stripe, req, user, flow) {
 
 exports.api = onRequest(
     {
-        secrets: [ANTHROPIC_KEY_ENCRYPTION_KEY, STRIPE_SECRET_KEY, STRIPE_PRICE_ID],
+        secrets: [ANTHROPIC_API_KEY, ANTHROPIC_KEY_ENCRYPTION_KEY, STRIPE_SECRET_KEY, STRIPE_PRICE_ID],
         cors: ALLOWED_ORIGINS,
     },
     async (req, res) => {
         try {
+            // The welcome screen loads before sign-in finishes, so it needs no token.
+            if (req.method === 'GET' && req.path.replace(/\/+$/, '') === '/welcome') {
+                res.set('Cache-Control', 'no-store');
+                res.json({ welcome: await getWelcome(ANTHROPIC_API_KEY.value()) });
+                return;
+            }
+
             const user = await verifyUser(req);
             const stripe = new Stripe(STRIPE_SECRET_KEY.value());
             const route = `${req.method} ${req.path.replace(/\/+$/, '') || '/'}`;

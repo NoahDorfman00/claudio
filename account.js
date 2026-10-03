@@ -339,33 +339,38 @@ async function openPortal(flow) {
     }
 }
 
-/** Cancel at period end, or undo that, then show the account again. */
-async function changeSubscription(action) {
+/**
+ * Cancel at period end, or undo that, then redraw the account view in the same dialog so it
+ * doesn't blink closed and open again.
+ */
+async function changeSubscription(action, body, close) {
     try {
         const { url } = await api(`/subscription/${action}`, { method: 'POST' });
         if (url) return goToStripe(url); // key can't change subscriptions: Stripe's portal does it
         await refreshAccount();
-        openAccount();
+        body.replaceChildren();
+        renderAccount(body, close);
     } catch (err) {
         alertDialog('Couldn\'t update your subscription', err.message);
     }
 }
 
-function confirmCancel(until) {
-    openDialog((body, close) => {
-        body.append(
-            text('h2', 'dialog-title', 'Cancel your subscription?'),
-            text('p', 'dialog-sub', `You'll stay a regular until ${until} and won't be charged again. You can change your mind anytime before then.`),
-        );
-        const confirm = button('Cancel subscription', 'btn primary');
-        confirm.addEventListener('click', () => busy(confirm, async () => {
-            close();
-            await changeSubscription('cancel');
-        }));
-        const foot = el('div', 'dialog-foot');
-        foot.append(button('Keep it', 'btn ghost', close), confirm);
-        body.append(foot);
-    });
+function renderConfirmCancel(body, close, until) {
+    body.replaceChildren(
+        text('h2', 'dialog-title', 'Cancel your subscription?'),
+        text('p', 'dialog-sub', `You'll stay a regular until ${until} and won't be charged again. You can change your mind anytime before then.`),
+    );
+    const confirm = button('Cancel subscription', 'btn primary');
+    confirm.addEventListener('click', () => busy(confirm, () => changeSubscription('cancel', body, close)));
+    const foot = el('div', 'dialog-foot');
+    foot.append(
+        button('Keep it', 'btn ghost', () => {
+            body.replaceChildren();
+            renderAccount(body, close);
+        }),
+        confirm,
+    );
+    body.append(foot);
 }
 
 function alertDialog(title, message) {
@@ -576,114 +581,114 @@ function row(title, subtitle, onClick) {
 }
 
 export function openAccount() {
-    openDialog((body, close) => {
-        const a = account;
-        if (!a) {
-            body.append(text('h2', 'dialog-title', 'One sec…'), text('p', 'dialog-sub', 'Still loading your account.'));
-            return;
-        }
-        const signedIn = !a.isAnonymous;
-        const subscribed = isSubscriber();
-        const price = planPrice();
+    openDialog(renderAccount);
+}
 
-        body.append(text('h2', 'dialog-title', signedIn ? displayName() : 'You\'re a guest'));
-        if (signedIn && a.email && displayName() !== a.email) body.append(text('p', 'dialog-sub', a.email));
+function renderAccount(body, close) {
+    const a = account;
+    if (!a) {
+        body.append(text('h2', 'dialog-title', 'One sec…'), text('p', 'dialog-sub', 'Still loading your account.'));
+        return;
+    }
+    const signedIn = !a.isAnonymous;
+    const subscribed = isSubscriber();
+    const price = planPrice();
 
-        // Status
-        const status = el('div', 'acct-status');
-        if (subscribed && a.subscriptionStatus === 'pending_cancellation') {
-            status.append(
-                text('p', 'acct-status-title', `Regular until ${a.endsOn || a.allowanceResets}`),
-                meter(a.allowanceUsedPercent, 'Allowance used'),
-                text('p', 'muted', `${a.allowanceUsedPercent}% of your allowance used · you won't be charged again`),
-            );
-        } else if (subscribed) {
-            status.append(
-                text('p', 'acct-status-title', 'You\'re a regular. Grazie!'),
-                meter(a.allowanceUsedPercent, 'Monthly allowance used'),
-                text('p', 'muted', `${a.allowanceUsedPercent}% of this month's allowance used · resets ${a.allowanceResets}`),
-            );
-        } else if (a.subscriptionStatus === 'past_due') {
-            status.append(
-                text('p', 'acct-status-title', 'Your last payment didn\'t go through'),
-                text('p', 'muted', 'Update your card to keep chatting.'),
-                button('Update payment', 'btn primary', () => openPortal('payment')),
-            );
-        } else if (browserKey() || a.keyHint) {
-            status.append(
-                text('p', 'acct-status-title', 'Using your own API key'),
-                text('p', 'muted', 'No limits here. Usage is billed to your Anthropic account.'),
-            );
-        } else {
-            const used = a.freeMessages - a.freeMessagesLeft;
-            status.append(
-                text('p', 'acct-status-title', 'Free tasting menu'),
-                meter(Math.round((used / a.freeMessages) * 100), 'Free messages used'),
-                text('p', 'muted', `${a.freeMessagesLeft} of ${a.freeMessages} free messages left`),
-            );
-        }
-        body.append(status);
+    body.append(text('h2', 'dialog-title', signedIn ? displayName() : 'You\'re a guest'));
+    if (signedIn && a.email && displayName() !== a.email) body.append(text('p', 'dialog-sub', a.email));
 
-        // Main action for guests: sign in right here.
-        if (!signedIn) {
-            const err = errorLine();
-            body.append(
-                googleButton(err, null, async () => close()),
-                text('p', 'acct-hint', 'Sign in to save your key or become a regular. Your chats stay on this device.'),
-                err,
-            );
-        }
+    // Status
+    const status = el('div', 'acct-status');
+    if (subscribed && a.subscriptionStatus === 'pending_cancellation') {
+        status.append(
+            text('p', 'acct-status-title', `Regular until ${a.endsOn || a.allowanceResets}`),
+            meter(a.allowanceUsedPercent, 'Allowance used'),
+            text('p', 'muted', `${a.allowanceUsedPercent}% of your allowance used · you won't be charged again`),
+        );
+    } else if (subscribed) {
+        status.append(
+            text('p', 'acct-status-title', 'You\'re a regular. Grazie!'),
+            meter(a.allowanceUsedPercent, 'Monthly allowance used'),
+            text('p', 'muted', `${a.allowanceUsedPercent}% of this month's allowance used · resets ${a.allowanceResets}`),
+        );
+    } else if (a.subscriptionStatus === 'past_due') {
+        status.append(
+            text('p', 'acct-status-title', 'Your last payment didn\'t go through'),
+            text('p', 'muted', 'Update your card to keep chatting.'),
+            button('Update payment', 'btn primary', () => openPortal('payment')),
+        );
+    } else if (browserKey() || a.keyHint) {
+        status.append(
+            text('p', 'acct-status-title', 'Using your own API key'),
+            text('p', 'muted', 'No limits here. Usage is billed to your Anthropic account.'),
+        );
+    } else {
+        const used = a.freeMessages - a.freeMessagesLeft;
+        status.append(
+            text('p', 'acct-status-title', 'Free tasting menu'),
+            meter(Math.round((used / a.freeMessages) * 100), 'Free messages used'),
+            text('p', 'muted', `${a.freeMessagesLeft} of ${a.freeMessages} free messages left`),
+        );
+    }
+    body.append(status);
 
-        // Everything else is a quiet row.
-        const rows = el('div', 'acct-rows');
-        if (a.subscriptionStatus === 'pending_cancellation') {
-            rows.append(
-                row('Keep my subscription', 'Undo the cancellation', async (e) => {
-                    const r = e.currentTarget;
-                    r.disabled = true;
-                    r.querySelector('small').textContent = 'One sec…';
-                    close();
-                    await changeSubscription('resume');
-                }),
-                row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()),
-            );
-        } else if (subscribed) {
-            rows.append(
-                row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()),
-                row('Cancel subscription', `You'll keep access until ${a.allowanceResets}`, () => {
-                    close();
-                    confirmCancel(a.allowanceResets);
-                }),
-            );
-        } else if (a.subscriptionStatus === 'past_due') {
-            rows.append(row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()));
-        } else {
-            rows.append(row('Become a regular', price ? `${price} · keep chatting all month` : 'Keep chatting all month', () => {
-                close();
-                startCheckout();
-            }));
-        }
-        const bk = browserKey();
-        const keyHint = signedIn ? a.keyHint : null;
-        rows.append(row(
-            keyHint || bk ? `Your API key ${keyHint || bk.hint}` : 'Use your own API key',
-            keyHint ? 'Saved to your account' : bk ? 'Saved in this browser' : 'Pay Anthropic directly, no monthly limit',
-            () => {
-                close();
-                openKeyDialog();
-            },
-        ));
-        body.append(rows);
+    // Main action for guests: sign in right here.
+    if (!signedIn) {
+        const err = errorLine();
+        body.append(
+            googleButton(err, null, async () => close()),
+            text('p', 'acct-hint', 'Sign in to save your key or become a regular. Your chats stay on this device.'),
+            err,
+        );
+    }
 
-        if (signedIn) {
-            const foot = el('div', 'dialog-foot');
-            foot.append(button('Sign out', 'btn ghost', async () => {
-                close();
-                await signOut(auth); // onAuthStateChanged starts a fresh guest session
-            }));
-            body.append(foot);
-        }
-    });
+    // Everything else is a quiet row.
+    const rows = el('div', 'acct-rows');
+    if (a.subscriptionStatus === 'pending_cancellation') {
+        rows.append(
+            row('Keep my subscription', 'Undo the cancellation', async (e) => {
+                const r = e.currentTarget;
+                r.disabled = true;
+                r.querySelector('small').textContent = 'One sec…';
+                await changeSubscription('resume', body, close);
+            }),
+            row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()),
+        );
+    } else if (subscribed) {
+        rows.append(
+            row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()),
+            row('Cancel subscription', `You'll keep access until ${a.allowanceResets}`, () => {
+                renderConfirmCancel(body, close, a.allowanceResets);
+            }),
+        );
+    } else if (a.subscriptionStatus === 'past_due') {
+        rows.append(row('Manage billing', 'Your card and invoices, on Stripe', () => openPortal()));
+    } else {
+        rows.append(row('Become a regular', price ? `${price} · keep chatting all month` : 'Keep chatting all month', () => {
+            close();
+            startCheckout();
+        }));
+    }
+    const bk = browserKey();
+    const keyHint = signedIn ? a.keyHint : null;
+    rows.append(row(
+        keyHint || bk ? `Your API key ${keyHint || bk.hint}` : 'Use your own API key',
+        keyHint ? 'Saved to your account' : bk ? 'Saved in this browser' : 'Pay Anthropic directly, no monthly limit',
+        () => {
+            close();
+            openKeyDialog();
+        },
+    ));
+    body.append(rows);
+
+    if (signedIn) {
+        const foot = el('div', 'dialog-foot');
+        foot.append(button('Sign out', 'btn ghost', async () => {
+            close();
+            await signOut(auth); // onAuthStateChanged starts a fresh guest session
+        }));
+        body.append(foot);
+    }
 }
 
 // ---------- Returning from Stripe ----------
