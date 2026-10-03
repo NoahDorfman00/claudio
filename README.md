@@ -1,8 +1,9 @@
 # Claudio
 
-A chatbot that role-plays Claudio: second-generation Italian-American, late
-40s, owns a family restaurant in Brooklyn, has opinions about your chicken
-parm. One static page, one Firebase Function, one very long system prompt.
+A chatbot that role-plays Claudio and Claudia: second-generation
+Italian-American grandparents in their late sixties from South Jersey, with
+opinions about your gravy. He's a retired machinist who can fix anything;
+she's a retired seamstress and the best cook in the family.
 Live at [claudio.noahgdorfman.com](https://claudio.noahgdorfman.com/).
 
 <p align="center">
@@ -21,11 +22,10 @@ The site's tagline is "Artificial Italian," and that is the whole pitch.
 
 Claudio is a full Claude chat app wearing a flat cap. He can code, write,
 explain, read images and PDFs, and search the web, the same as Claude can.
-The difference is the voice: Brooklyn, the kitchen, Nonna.
+The difference is the voice: South Jersey, Sunday dinner, Nonna.
 
-**Two characters.** A toggle next to the name switches between Claudio (he
-runs the family red-sauce restaurant) and his cousin Claudia (she runs the
-family pastry shop in Bay Ridge). Each has her or his own system prompt,
+**Two characters.** A toggle next to the name switches between Claudio (a
+retired machinist) and his wife Claudia (a retired seamstress and home cook). Each has her or his own system prompt,
 avatar, accent color and welcome messages (`personas.js`, `[data-persona]`
 in `styles.css`, `functions/prompt.js`). A conversation stays with whoever
 it started with: every chat records its character, the sidebar shows their
@@ -118,10 +118,11 @@ and `customer.subscription.created/updated/deleted`. Firestore rules deny
 all client access; the browser gets what it needs from `GET /api/account`.
 
 **The prompts** (`functions/prompt.js`) give each character a backstory and a
-voice: Claudio with Sicilian grandparents, the restaurant and kitchen
-metaphors ("let me check with a guy" before a web search); Claudia with
-Calabrian grandparents, the pasticceria and baking metaphors ("good code is
-laminated dough"). They share the rest: the answer has to be as good as
+voice: Claudio with Sicilian grandparents and forty years on a shop floor
+("measure twice, cut once"); Claudia with Calabrian grandparents, a lifetime
+of sewing and Sunday dinners ("pin it before you sew it"). Their trades are
+extra context that shows up when a question is adjacent to them, not in
+every answer. They share the rest: the answer has to be as good as
 Claude's, code stays clean, facts stay facts, and the bit drops when someone
 is going through something hard or asks for it to.
 

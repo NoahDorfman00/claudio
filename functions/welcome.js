@@ -15,12 +15,14 @@ const welcomeRef = (persona) => db.collection('meta').doc(`welcome_${persona}`);
 
 const CHARACTERS = {
     claudio: {
-        who: 'Claudio, the "Artificial Italian": a chat assistant with the voice of a warm, second-generation Italian-American man who runs his family\'s red-sauce restaurant in Brooklyn',
-        examples: '"Ciao! What\'re we cookin\' today?" or "Pull up a chair, you hungry?"',
+        who: 'Claudio, the "Artificial Italian": a chat assistant with the voice of a warm, steady Italian-American grandfather in his late sixties from South Jersey, a retired machinist who can fix or build just about anything',
+        examples: '"Ciao! Pull up a chair, kid." or "Alright, what are we fixin\' today?"',
+        flavor: 'Family, the garden, the shore, Sunday dinner, and now and then fixing or building things (not every set).',
     },
     claudia: {
-        who: 'Claudia, the "Artificial Italian": a chat assistant with the voice of a warm, sharp, second-generation Italian-American woman who runs her family\'s pastry shop in Bay Ridge, Brooklyn',
-        examples: '"Ciao, bella! Come on in." or "Sit, sit. You eat yet?"',
+        who: 'Claudia, the "Artificial Italian": a chat assistant with the voice of a warm, sharp Italian-American grandmother in her late sixties from South Jersey, a retired seamstress and the best cook in the family',
+        examples: '"Ciao, hon! Come in, sit." or "You eat yet? Sit, sit."',
+        flavor: 'Family, the kitchen, Sunday dinner, the grandkids, and now and then sewing or mending (not every set).',
     },
 };
 
@@ -46,14 +48,14 @@ const SCHEMA = {
 };
 
 const promptFor = (persona) => {
-    const { who, examples } = CHARACTERS[persona];
+    const { who, examples, flavor } = CHARACTERS[persona];
     const name = persona === 'claudia' ? 'Claudia' : 'Claudio';
     return `You write the welcome screen for ${who}. Under the hood ${name} can do anything Claude can: code, writing, homework, research with web search, planning, advice, reading images and PDFs.
 
 Write ${SETS} different welcome sets. Each set has:
-- greeting: what ${name} says when you sit down. At most ${LIMITS.greeting} characters, so it fits on one line. Warm, a little Brooklyn, like ${examples}
+- greeting: what ${name} says when you sit down. At most ${LIMITS.greeting} characters, so it fits on one line. Warm, a little South Jersey, like ${examples}
 - subtitle: one short line under it saying what ${name} can help with. At most ${LIMITS.subtitle} characters, one sentence or two short ones.
-- suggestions: exactly 4 prompts a visitor might tap, each at most ${LIMITS.suggestion} characters, written as the visitor talking to ${name}. Give them Italian-American flavor, and make the four cover different things ${name} can actually do: one about food or family, one that's really a coding, work or school question, one that needs current info from the web, and one about writing or advice.
+- suggestions: exactly 4 prompts a visitor might tap, each at most ${LIMITS.suggestion} characters, written as the visitor talking to ${name}. Give them Italian-American, South Jersey flavor (${flavor}), and make the four cover different things ${name} can actually do: one about food or family, one that's really a coding, work or school question, one that needs current info from the web, and one about writing or advice.
 
 Keep it authentic, not a cartoon: no "mamma mia" accents, no mob jokes, no "badda-bing". Vary the openings and the topics across sets so no two feel alike.`;
 };
