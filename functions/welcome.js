@@ -11,7 +11,18 @@ const LOCK_MS = 2 * 60 * 1000;
 const SETS = 12;
 const LIMITS = { greeting: 34, subtitle: 72, suggestion: 52 };
 
-const welcomeRef = db.collection('meta').doc('welcome');
+const welcomeRef = (persona) => db.collection('meta').doc(`welcome_${persona}`);
+
+const CHARACTERS = {
+    claudio: {
+        who: 'Claudio, the "Artificial Italian": a chat assistant with the voice of a warm, second-generation Italian-American man who runs his family\'s red-sauce restaurant in Brooklyn',
+        examples: '"Ciao! What\'re we cookin\' today?" or "Pull up a chair, you hungry?"',
+    },
+    claudia: {
+        who: 'Claudia, the "Artificial Italian": a chat assistant with the voice of a warm, sharp, second-generation Italian-American woman who runs her family\'s pastry shop in Bay Ridge, Brooklyn',
+        examples: '"Ciao, bella! Come on in." or "Sit, sit. You eat yet?"',
+    },
+};
 
 const SCHEMA = {
     type: 'object',
@@ -34,14 +45,18 @@ const SCHEMA = {
     additionalProperties: false,
 };
 
-const PROMPT = `You write the welcome screen for Claudio, the "Artificial Italian": a chat assistant with the voice of a warm, second-generation Italian-American restaurant owner from Brooklyn. Under the hood Claudio can do anything Claude can: code, writing, homework, research with web search, planning, advice, reading images and PDFs.
+const promptFor = (persona) => {
+    const { who, examples } = CHARACTERS[persona];
+    const name = persona === 'claudia' ? 'Claudia' : 'Claudio';
+    return `You write the welcome screen for ${who}. Under the hood ${name} can do anything Claude can: code, writing, homework, research with web search, planning, advice, reading images and PDFs.
 
 Write ${SETS} different welcome sets. Each set has:
-- greeting: what Claudio says when you sit down. At most ${LIMITS.greeting} characters, so it fits on one line. Warm, a little Brooklyn, like "Ciao! What're we cookin' today?" or "Pull up a chair, you hungry?"
-- subtitle: one short line under it saying what he can help with. At most ${LIMITS.subtitle} characters, one sentence or two short ones.
-- suggestions: exactly 4 prompts a visitor might tap, each at most ${LIMITS.suggestion} characters, written as the visitor talking to Claudio. Give them Italian-American flavor, and make the four cover different things Claudio can actually do: one about food or family, one that's really a coding, work or school question, one that needs current info from the web, and one about writing or advice.
+- greeting: what ${name} says when you sit down. At most ${LIMITS.greeting} characters, so it fits on one line. Warm, a little Brooklyn, like ${examples}
+- subtitle: one short line under it saying what ${name} can help with. At most ${LIMITS.subtitle} characters, one sentence or two short ones.
+- suggestions: exactly 4 prompts a visitor might tap, each at most ${LIMITS.suggestion} characters, written as the visitor talking to ${name}. Give them Italian-American flavor, and make the four cover different things ${name} can actually do: one about food or family, one that's really a coding, work or school question, one that needs current info from the web, and one about writing or advice.
 
 Keep it authentic, not a cartoon: no "mamma mia" accents, no mob jokes, no "badda-bing". Vary the openings and the topics across sets so no two feel alike.`;
+};
 
 function clean(set) {
     const trim = (s) => String(s || '').replace(/\s+/g, ' ').trim();
@@ -54,13 +69,13 @@ function clean(set) {
     return { greeting, subtitle, suggestions: suggestions.slice(0, 4) };
 }
 
-async function generate(apiKey) {
+async function generate(apiKey, persona) {
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
         model: MODEL,
         max_tokens: 8000,
         output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
-        messages: [{ role: 'user', content: PROMPT }],
+        messages: [{ role: 'user', content: promptFor(persona) }],
     });
     if (response.stop_reason === 'refusal') throw new Error('Welcome generation was declined.');
     const textBlock = response.content.find((b) => b.type === 'text');
@@ -71,8 +86,9 @@ async function generate(apiKey) {
 }
 
 /** A random welcome set, regenerating the batch when it's a day old. Null if none exist yet. */
-async function getWelcome(apiKey) {
-    const snap = await welcomeRef.get();
+async function getWelcome(apiKey, persona = 'claudio') {
+    const ref = welcomeRef(persona);
+    const snap = await ref.get();
     const data = snap.data() || {};
     const sets = data.sets || [];
     const pick = (list) => (list.length ? list[Math.floor(Math.random() * list.length)] : null);
@@ -80,20 +96,20 @@ async function getWelcome(apiKey) {
 
     // Stale or missing: one request takes a short lock and regenerates; the rest serve what's there.
     const gotLock = await db.runTransaction(async (tx) => {
-        const fresh = (await tx.get(welcomeRef)).data() || {};
+        const fresh = (await tx.get(ref)).data() || {};
         if ((fresh.refreshingUntil || 0) > Date.now()) return false;
-        tx.set(welcomeRef, { refreshingUntil: Date.now() + LOCK_MS }, { merge: true });
+        tx.set(ref, { refreshingUntil: Date.now() + LOCK_MS }, { merge: true });
         return true;
     });
     if (!gotLock) return pick(sets);
 
     try {
-        const newSets = await generate(apiKey);
-        await welcomeRef.set({ sets: newSets, generatedAt: Date.now(), refreshingUntil: 0 });
+        const newSets = await generate(apiKey, persona);
+        await ref.set({ sets: newSets, generatedAt: Date.now(), refreshingUntil: 0 });
         return pick(newSets);
     } catch (err) {
         console.error('[welcome] generation failed', err);
-        await welcomeRef.set({ refreshingUntil: 0 }, { merge: true });
+        await ref.set({ refreshingUntil: 0 }, { merge: true });
         return pick(sets);
     }
 }

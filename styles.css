@@ -59,6 +59,52 @@
     color-scheme: dark;
 }
 
+/* Claudia: raspberry accent on a blush cream, same ink. */
+:root[data-persona="claudia"] {
+    --bg: #f5e4df;
+    --surface: #fff7f4;
+    --surface-2: #f9ebe7;
+    --sidebar: #efd5ce;
+    --line: #e2c3bb;
+    --accent: #b84a62;
+    --accent-ink: #fff7f4;
+    --accent-soft: #f0c4cd;
+    --code-bg: #fcf3f0;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-persona="claudia"]:not([data-theme="light"]) {
+        --bg: #1f1719;
+        --surface: #2b2124;
+        --surface-2: #33272b;
+        --sidebar: #181113;
+        --line: #46353a;
+        --accent: #e57f95;
+        --accent-ink: #1f1719;
+        --accent-soft: #5c2c38;
+        --code-bg: #160f11;
+    }
+}
+
+:root[data-persona="claudia"][data-theme="dark"] {
+    --bg: #1f1719;
+    --surface: #2b2124;
+    --surface-2: #33272b;
+    --sidebar: #181113;
+    --line: #46353a;
+    --accent: #e57f95;
+    --accent-ink: #1f1719;
+    --accent-soft: #5c2c38;
+    --code-bg: #160f11;
+}
+
+body,
+.sidebar,
+.composer,
+.suggestion {
+    transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -148,6 +194,14 @@ svg {
     display: flex;
     flex-direction: column;
     line-height: 1.15;
+    min-width: 0;
+}
+
+.brand-name,
+.brand-tag {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .brand-name {
@@ -1113,6 +1167,7 @@ svg {
         position: fixed;
         inset: 0 auto 0 0;
         z-index: 40;
+        width: min(86vw, 320px);
         transform: translateX(-100%);
         box-shadow: var(--shadow);
     }
@@ -1590,4 +1645,83 @@ svg {
     height: 100%;
     background: var(--accent);
     border-radius: 999px;
+}
+
+/* ---------- Persona toggle ---------- */
+
+.persona-switch {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 7%, transparent);
+    flex: none;
+}
+
+.persona-switch button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    opacity: 0.55;
+    transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.persona-switch button:hover {
+    opacity: 0.9;
+}
+
+.persona-switch button[aria-pressed="true"] {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.persona-switch img {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+.sidebar-head {
+    gap: 8px;
+}
+
+.brand {
+    min-width: 0;
+    flex: 1;
+}
+
+.chat-item .chat-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: none;
+    margin-left: 8px;
+}
+
+.chat-item .chat-avatar + a {
+    padding-left: 8px;
+}
+
+.topbar-avatar {
+    display: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: none;
+}
+
+@media (max-width: 820px) {
+    .topbar-avatar {
+        display: block;
+    }
 }

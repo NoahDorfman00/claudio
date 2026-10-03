@@ -3,6 +3,8 @@ import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify
 import hljs from 'https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.12.0/es/highlight.min.js';
 import * as store from './store.js';
 import * as acct from './account.js';
+import * as sync from './sync.js';
+import { persona, personaOf, setPersona, onPersonaChange } from './personas.js';
 
 // ---------- Config ----------
 
@@ -35,10 +37,15 @@ const jumpBtn = $('jump');
 
 // ---------- State ----------
 
-let chat = null;            // { id, title, createdAt, updatedAt, messages: [{role, content, ...}] }
+let chat = null;            // { id, title, persona, createdAt, updatedAt, messages: [{id, role, content, ...}] }
 let pending = [];           // attachments waiting in the composer: { kind, name, block, preview }
-let controller = null;      // AbortController for the in-flight request
 let stickToBottom = true;
+
+// Replies in flight, by chat id. A reply keeps going when you switch chats or characters; its
+// events are kept so the chat can be redrawn mid-reply if you come back to it.
+//   { chat, controller, events, text, view, deleted }
+const streams = new Map();
+const activeStream = () => (chat ? streams.get(chat.id) : undefined);
 
 // ---------- Icons ----------
 
@@ -153,8 +160,9 @@ jumpBtn.addEventListener('click', () => {
 // and messages loaded from storage.
 
 class BotView {
-    constructor(container) {
+    constructor(container, name) {
         this.root = container;
+        this.name = name;
         this.body = container.querySelector('.bot-body');
         this.content = el('div', 'bot-content');
         this.body.appendChild(this.content);
@@ -183,7 +191,7 @@ class BotView {
         this.hideTyping();
         if (this.last()?.kind === 'thinking') return;
         const node = el('details', 'thinking' + (live ? ' live' : ''));
-        node.innerHTML = `<summary>${ICONS.chevron}<span>${live ? 'Mullin\' it over…' : 'Claudio\'s thoughts'}</span></summary><div class="thinking-text"></div>`;
+        node.innerHTML = `<summary>${ICONS.chevron}<span>${live ? 'Mullin\' it over…' : `${this.name}'s thoughts`}</span></summary><div class="thinking-text"></div>`;
         this.content.appendChild(node);
         this.segments.push({ kind: 'thinking', node, text: '' });
     }
@@ -199,7 +207,7 @@ class BotView {
         for (const seg of this.segments) {
             if (seg.kind === 'thinking' && seg.node.classList.contains('live')) {
                 seg.node.classList.remove('live');
-                seg.node.querySelector('summary span').textContent = 'Claudio\'s thoughts';
+                seg.node.querySelector('summary span').textContent = `${this.name}'s thoughts`;
             }
         }
     }
@@ -217,6 +225,16 @@ class BotView {
         if (this.last()?.kind !== 'text') this.startText();
         this.last().text += text;
         this.scheduleRender();
+    }
+
+    /** Draw pending text now instead of waiting for the next frame. */
+    flush() {
+        if (this.frame) {
+            cancelAnimationFrame(this.frame);
+            this.frame = 0;
+        }
+        const seg = this.last();
+        if (seg?.kind === 'text') renderMarkdown(seg.node, seg.text);
     }
 
     scheduleRender() {
@@ -303,11 +321,27 @@ class BotView {
     }
 }
 
-function botShell() {
+/** A Claudio/Claudia message row with its renderer. */
+function botView(personaId) {
+    const p = personaOf(personaId);
     const node = el('div', 'msg bot');
-    node.innerHTML = '<img src="assets/claudio-avatar.jpg" alt="" class="avatar"><div class="bot-body"></div>';
+    node.innerHTML = '<img alt="" class="avatar"><div class="bot-body"></div>';
+    node.querySelector('img').src = p.avatar;
     thread.appendChild(node);
-    return node;
+    return new BotView(node, p.name);
+}
+
+/** Replay one streamed event into a view. */
+function applyEvent(view, event) {
+    switch (event.type) {
+        case 'thinking_start': view.startThinking(true); break;
+        case 'thinking': view.addThinking(event.text); break;
+        case 'text_start': view.startText(); break;
+        case 'text': view.addText(event.text); break;
+        case 'tool': view.addTool(event.name, event.input); break;
+        case 'citations': view.addCitations(event.citations); break;
+        default: break;
+    }
 }
 
 function addActions(node, actions) {
@@ -377,7 +411,7 @@ function openLightbox(src) {
 }
 
 function startEdit(node, index) {
-    if (controller) return;
+    if (activeStream()) return;
     const message = chat.messages[index];
     const box = el('div', 'edit-box');
     const ta = el('textarea');
@@ -405,7 +439,7 @@ function startEdit(node, index) {
         // Editing forks the conversation: everything after this message is dropped,
         // so earlier turns (and their thinking blocks) stay byte-for-byte the same.
         chat.messages = chat.messages.slice(0, index);
-        chat.messages.push({ role: 'user', content: [...files, ...(text ? [{ type: 'text', text }] : [])] });
+        chat.messages.push({ id: uid(), role: 'user', content: [...files, ...(text ? [{ type: 'text', text }] : [])] });
         renderChat({ showUnanswered: false });
         respond();
     };
@@ -425,30 +459,51 @@ function startEdit(node, index) {
 function renderChat({ showUnanswered = true } = {}) {
     thread.innerHTML = '';
     const messages = chat?.messages || [];
+    const p = personaOf(chat?.persona || persona().id);
     empty.hidden = messages.length > 0;
     chatTitle.textContent = chat?.title || 'New chat';
-    document.title = chat?.title ? `${chat.title} · Claudio` : 'Claudio';
+    document.title = chat?.title ? `${chat.title} · ${p.name}` : p.name;
 
     messages.forEach((m, i) => {
         if (m.role === 'user') {
             renderUser(m, i);
         } else {
-            const node = botShell();
-            const view = new BotView(node);
+            const view = botView(p.id);
             view.renderBlocks(m.content);
             if (m.note) appendNotice(view.body, m.note);
-            botActions(node, view, i);
+            botActions(view.root, view, i);
         }
     });
 
+    const s = activeStream();
     const lastMsg = messages[messages.length - 1];
-    if (showUnanswered && lastMsg?.role === 'user' && !controller) {
+    if (s) {
+        attachStream(s);
+    } else if (showUnanswered && lastMsg?.role === 'user') {
         // The last request never got an answer (error, closed tab, stopped early).
-        const node = botShell();
-        appendNotice(node.querySelector('.bot-body'), 'Claudio didn\'t get to answer this one.', true);
+        const view = botView(p.id);
+        appendNotice(view.body, `${p.name} didn't get to answer this one.`, true);
     }
     markLast();
+    updateComposer();
     requestAnimationFrame(() => scrollToBottom(true));
+}
+
+/** Show a reply that's in flight, catching up on everything it has streamed so far. */
+function attachStream(s) {
+    const view = botView(s.chat.persona);
+    if (s.events.length) {
+        s.events.forEach((e) => applyEvent(view, e));
+        view.flush();
+    } else {
+        view.showTyping();
+    }
+    s.view = view;
+}
+
+/** Leaving the screen: replies in flight keep going, but stop drawing into it. */
+function detachStreams() {
+    for (const s of streams.values()) s.view = null;
 }
 
 function markLast() {
@@ -489,7 +544,7 @@ function appendNotice(parent, text, retry = false, error = false, action = null)
 }
 
 function regenerate() {
-    if (controller) return;
+    if (activeStream()) return;
     const lastMsg = chat.messages[chat.messages.length - 1];
     if (lastMsg?.role === 'assistant') chat.messages.pop();
     renderChat({ showUnanswered: false });
@@ -498,13 +553,25 @@ function regenerate() {
 
 // ---------- Sidebar ----------
 
-async function renderSidebar() {
+let sidebarRender = Promise.resolve();
+function renderSidebar() {
+    // Renders can overlap (sync, saves); chain them so the list never doubles up.
+    sidebarRender = sidebarRender.then(drawSidebar).catch((err) => console.error(err));
+    return sidebarRender;
+}
+
+async function drawSidebar() {
     const chats = await store.listChats();
     chatList.innerHTML = '';
     if (!chats.length) return;
     chatList.appendChild(Object.assign(el('div', 'chat-list-label'), { textContent: 'Recent' }));
     for (const c of chats) {
-        const item = el('div', 'chat-item' + (c.id === chat?.id ? ' active' : ''));
+        const p = personaOf(c.persona);
+        const item = el('div', 'chat-item' + (c.id === chat?.id ? ' active' : '') + (streams.has(c.id) ? ' streaming' : ''));
+        const avatar = el('img', 'chat-avatar');
+        avatar.src = p.avatar;
+        avatar.alt = '';
+        avatar.title = `With ${p.name}`;
         const a = el('a');
         a.href = `#${c.id}`;
         a.textContent = c.title || 'Untitled';
@@ -518,31 +585,48 @@ async function renderSidebar() {
         del.setAttribute('aria-label', `Delete ${c.title || 'chat'}`);
         del.addEventListener('click', async () => {
             if (!confirm(`Delete “${c.title || 'this chat'}”?`)) return;
-            await store.deleteChat(c.id);
+            await deleteChat(c.id);
             if (c.id === chat?.id) newChat();
             else renderSidebar();
         });
-        item.append(a, del);
+        item.append(avatar, a, del);
         chatList.appendChild(item);
     }
 }
 
+async function deleteChat(id) {
+    const s = streams.get(id);
+    if (s) {
+        s.deleted = true;
+        s.controller.abort();
+        streams.delete(id);
+    }
+    await store.deleteChat(id);
+    await sync.remove(id);
+}
+
 async function openChat(id) {
-    if (controller) controller.abort();
-    const found = await store.getChat(id);
+    const s = streams.get(id);
+    const found = s ? s.chat : await store.getChat(id);
     if (!found) return newChat();
+    detachStreams();
     chat = found;
+    setPersona(found.persona || 'claudio');
     history.replaceState(null, '', `#${id}`);
     renderChat();
     renderSidebar();
     input.focus();
 }
 
-function newChat() {
-    if (controller) controller.abort();
+/** The new-chat screen, optionally as a different character. keepDraft keeps typed text and attachments. */
+function newChat({ personaId, keepDraft = false } = {}) {
+    detachStreams();
     chat = null;
-    pending = [];
-    renderAttachments();
+    if (personaId) setPersona(personaId);
+    if (!keepDraft) {
+        pending = [];
+        renderAttachments();
+    }
     history.replaceState(null, '', location.pathname + location.search);
     renderChat();
     renderSidebar();
@@ -567,8 +651,8 @@ $('toggle-sidebar').addEventListener('click', () => {
 });
 $('close-sidebar').addEventListener('click', closeSidebarOnMobile);
 $('scrim').addEventListener('click', closeSidebarOnMobile);
-$('new-chat').addEventListener('click', newChat);
-$('new-chat-top').addEventListener('click', newChat);
+$('new-chat').addEventListener('click', () => newChat());
+$('new-chat-top').addEventListener('click', () => newChat());
 
 // ---------- Attachments ----------
 
@@ -639,7 +723,7 @@ async function addFiles(fileList) {
                     block: { type: 'document', source: { type: 'text', media_type: 'text/plain', data: text }, title: file.name },
                 });
             } else {
-                toast(`Claudio can't read ${file.name}. Try an image, PDF, or text file.`);
+                toast(`Can't read ${file.name}. Try an image, PDF, or text file.`);
             }
         } catch (err) {
             console.error(err);
@@ -718,7 +802,15 @@ function autosize() {
 }
 
 function updateSend() {
-    sendBtn.disabled = !controller && !input.value.trim() && !pending.length;
+    sendBtn.disabled = !activeStream() && !input.value.trim() && !pending.length;
+}
+
+/** Send button doubles as Stop while the chat on screen has a reply in flight. */
+function updateComposer() {
+    const busy = Boolean(activeStream());
+    form.classList.toggle('busy', busy);
+    sendBtn.setAttribute('aria-label', busy ? 'Stop' : 'Send');
+    updateSend();
 }
 
 input.addEventListener('input', () => {
@@ -750,33 +842,84 @@ $('suggestions').addEventListener('click', (e) => {
     form.requestSubmit();
 });
 
-// Today's greeting and suggestions, written by Claude once a day on the server. The static
-// ones in index.html stay if this is slow or fails.
-async function loadWelcome() {
+// ---------- Welcome screen ----------
+
+// Today's greetings and suggestions, written by Claude once a day per character on the server.
+// Fetched once per character per visit; the built-in ones in personas.js show if it's slow.
+const welcomes = new Map();
+
+function showWelcome(w) {
+    $('empty-title').textContent = w.greeting;
+    $('empty-sub').textContent = w.subtitle;
+    $('suggestions').replaceChildren(...w.suggestions.map((text) => {
+        const b = el('button', 'suggestion');
+        b.type = 'button';
+        b.textContent = text;
+        return b;
+    }));
+}
+
+async function loadWelcome(personaId) {
+    if (welcomes.has(personaId)) {
+        showWelcome(welcomes.get(personaId));
+        empty.classList.remove('loading');
+        return;
+    }
+    empty.classList.add('loading');
+    let w = personaOf(personaId).welcome;
     try {
-        const res = await fetch(`${acct.API_BASE}/api/welcome`, { signal: AbortSignal.timeout(1500) });
+        const res = await fetch(`${acct.API_BASE}/api/welcome?persona=${personaId}`, { signal: AbortSignal.timeout(1500) });
         const { welcome } = await res.json();
         if (welcome) {
-            $('empty-title').textContent = welcome.greeting;
-            $('empty-sub').textContent = welcome.subtitle;
-            $('suggestions').replaceChildren(...welcome.suggestions.map((text) => {
-                const b = el('button', 'suggestion');
-                b.type = 'button';
-                b.textContent = text;
-                return b;
-            }));
+            w = welcome;
+            welcomes.set(personaId, welcome);
         }
     } catch {
-        // keep the defaults
-    } finally {
-        empty.classList.remove('loading');
+        // keep the built-in one
     }
+    if (persona().id !== personaId) return; // switched again while this loaded
+    showWelcome(w);
+    empty.classList.remove('loading');
 }
+
+// ---------- Characters ----------
+
+const personaSwitch = $('persona-switch');
+
+onPersonaChange((p) => {
+    $('brand-avatar').src = p.avatar;
+    $('brand-name').textContent = p.name;
+    $('topbar-avatar').src = p.avatar;
+    $('empty-avatar').src = p.avatar;
+    $('empty-avatar').alt = p.avatarAlt;
+    input.placeholder = `Talk to ${p.name}…`;
+    $('disclaimer').textContent = `${p.name} is an AI. ${p.he[0].toUpperCase()}${p.he.slice(1)} can make mistakes, even about gravy.`;
+    $('drop-overlay').firstElementChild.textContent = 'Drop it on the counter';
+    personaSwitch.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.persona === p.id)));
+    if (!chat) {
+        document.title = p.name;
+        loadWelcome(p.id);
+    }
+});
+
+// Switching characters mid-conversation starts a new chat with the other one (a conversation
+// stays with whoever it started with). A reply in flight keeps going in the background, and
+// whatever you'd typed comes along.
+personaSwitch.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-persona]');
+    if (!b || b.dataset.persona === persona().id) return;
+    if (chat?.messages.length) newChat({ personaId: b.dataset.persona, keepDraft: true });
+    else setPersona(b.dataset.persona);
+    closeSidebarOnMobile();
+});
+
+// ---------- Sending ----------
 
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (controller) {
-        controller.abort();
+    const inFlight = activeStream();
+    if (inFlight) {
+        inFlight.controller.abort();
         return;
     }
     const text = input.value.trim();
@@ -784,13 +927,13 @@ form.addEventListener('submit', async (e) => {
 
     if (!chat) {
         const title = (text || pending[0]?.name || 'New chat').replace(/\s+/g, ' ').slice(0, 60);
-        chat = { id: uid(), title, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+        chat = { id: uid(), title, persona: persona().id, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
         history.replaceState(null, '', `#${chat.id}`);
     }
 
     const content = [...pending.map((p) => p.block)];
     if (text) content.push({ type: 'text', text });
-    chat.messages.push({ role: 'user', content });
+    chat.messages.push({ id: uid(), role: 'user', content });
 
     input.value = '';
     pending = [];
@@ -808,42 +951,49 @@ form.addEventListener('submit', async (e) => {
 
 // ---------- Talking to the backend ----------
 
-function apiMessages() {
-    return chat.messages.map(({ role, content }) => ({ role, content }));
+function apiMessages(c) {
+    return c.messages.map(({ role, content }) => ({ role, content }));
 }
 
-async function save() {
-    chat.updatedAt = Date.now();
+/** Save a chat locally, queue it for the cloud, and refresh the sidebar. */
+async function persist(c) {
+    c.updatedAt = Date.now();
     try {
-        await store.putChat(chat);
+        await store.putChat(c);
     } catch (err) {
         console.error(err);
         toast('Couldn\'t save this chat on your device.');
     }
+    sync.push(c.id);
     renderSidebar();
 }
 
-async function respond() {
-    await save();
-    const body = JSON.stringify({ messages: apiMessages(), effort, apiKey: acct.browserKey()?.key });
-    const node = botShell();
-    const view = new BotView(node);
-    view.showTyping();
-    markLast();
-    scrollToBottom();
+async function respond(target = chat) {
+    if (!target || streams.has(target.id)) return;
+    await persist(target);
+    const p = personaOf(target.persona);
+    const onScreen = () => chat === target;
+    const body = JSON.stringify({ messages: apiMessages(target), effort, persona: p.id, apiKey: acct.browserKey()?.key });
 
     if (body.length > MAX_REQUEST_BYTES) {
-        view.hideTyping();
-        appendNotice(view.body, 'This conversation got too big to send (too many files). Start a new chat and bring the important stuff.', false, true);
+        if (onScreen()) {
+            const view = botView(p.id);
+            appendNotice(view.body, 'This conversation got too big to send (too many files). Start a new chat and bring the important stuff.', false, true);
+            markLast();
+        }
         return;
     }
 
-    controller = new AbortController();
-    form.classList.add('busy');
-    sendBtn.setAttribute('aria-label', 'Stop');
-    updateSend();
+    const s = { chat: target, controller: new AbortController(), events: [], text: '', lastKind: null, view: null, deleted: false };
+    streams.set(target.id, s);
+    if (onScreen()) {
+        attachStream(s);
+        markLast();
+        scrollToBottom();
+    }
+    updateComposer();
+    renderSidebar();
 
-    const chatAtStart = chat;
     let result = null;
     let errorText = null;
     let errorCode = null;
@@ -856,7 +1006,7 @@ async function respond() {
                 Authorization: `Bearer ${await acct.idToken()}`,
             },
             body,
-            signal: controller.signal,
+            signal: s.controller.signal,
         });
         if (!res.ok || !res.body) {
             const data = await res.json().catch(() => ({}));
@@ -879,66 +1029,61 @@ async function respond() {
                 const line = raw.split('\n').find((l) => l.startsWith('data: '));
                 if (!line) continue;
                 const event = JSON.parse(line.slice(6));
-                switch (event.type) {
-                    case 'thinking_start': view.startThinking(true); break;
-                    case 'thinking': view.addThinking(event.text); break;
-                    case 'text_start': view.startText(); break;
-                    case 'text': view.addText(event.text); break;
-                    case 'tool': view.addTool(event.name, event.input); break;
-                    case 'citations': view.addCitations(event.citations); break;
-                    case 'done':
-                        result = event;
-                        acct.noteAllowanceUsed(event.allowanceUsedPercent);
-                        break;
-                    case 'error':
-                        errorText = event.message;
-                        errorCode = event.code;
-                        break;
+                if (event.type === 'done') {
+                    result = event;
+                    acct.noteAllowanceUsed(event.allowanceUsedPercent);
+                } else if (event.type === 'error') {
+                    errorText = event.message;
+                    errorCode = event.code;
+                } else {
+                    s.events.push(event);
+                    // Keep the plain text too, in case the reply is stopped and only that survives.
+                    if (event.type === 'text_start' && s.lastKind !== 'text' && s.text) s.text += '\n\n';
+                    if (event.type === 'text') s.text += event.text;
+                    if (event.type === 'text_start' || event.type === 'text') s.lastKind = 'text';
+                    else if (event.type === 'thinking_start' || event.type === 'tool') s.lastKind = 'other';
+                    if (s.view) {
+                        applyEvent(s.view, event);
+                        scrollToBottom();
+                    }
                 }
-                scrollToBottom();
             }
         }
-        if (!result && !errorText) errorText = 'The line went dead before Claudio finished.';
+        if (!result && !errorText) errorText = `The line went dead before ${p.name} finished.`;
     } catch (err) {
         if (err.name !== 'AbortError') {
             if (!err.fromServer) console.error(err);
             errorCode = err.code;
-            errorText = err.fromServer ? err.message : 'Couldn\'t reach Claudio. Check your connection and try again.';
+            errorText = err.fromServer ? err.message : `Couldn't reach ${p.name}. Check your connection and try again.`;
         }
     } finally {
-        controller = null;
-        form.classList.remove('busy');
-        sendBtn.setAttribute('aria-label', 'Send');
-        updateSend();
+        streams.delete(target.id);
+        updateComposer();
     }
 
-    // The user switched chats mid-answer; the response belongs to a chat no longer on screen.
-    if (chat !== chatAtStart) return;
-
-    view.finish();
-    const partial = view.text();
+    if (s.deleted) return;
+    const view = s.view;
+    view?.finish();
+    const partial = s.text.trim();
 
     if (result) {
         if (result.stop_reason === 'refusal') {
             // Keep only plain text from a declined turn so history stays valid to resend.
-            const note = 'Claudio had to pass on that one. Try asking a different way.';
-            chat.messages.push({ role: 'assistant', content: partial ? [{ type: 'text', text: partial }] : [{ type: 'text', text: '(declined)' }], note });
-            appendNotice(view.body, note);
+            const note = `${p.name} had to pass on that one. Try asking a different way.`;
+            target.messages.push({ id: uid(), role: 'assistant', content: [{ type: 'text', text: partial || '(declined)' }], note });
         } else {
-            chat.messages.push({ role: 'assistant', content: result.content });
-            if (result.stop_reason === 'max_tokens') {
-                const note = 'Claudio ran out of room on that answer. Ask him to keep going.';
-                chat.messages[chat.messages.length - 1].note = note;
-                appendNotice(view.body, note);
-            }
+            const message = { id: uid(), role: 'assistant', content: result.content };
+            if (result.stop_reason === 'max_tokens') message.note = `${p.name} ran out of room on that answer. Ask ${p.him} to keep going.`;
+            target.messages.push(message);
         }
-        await save();
-        node.remove();
-        renderChat();
+        await persist(target);
+        if (onScreen()) renderChat();
         return;
     }
 
     if (errorText) {
+        renderSidebar();
+        if (!onScreen() || !view) return; // off screen: the chat shows "didn't get to answer" when you return
         if (!partial) view.content.innerHTML = '';
         const access = accessAction(errorCode, errorText);
         if (access) {
@@ -953,16 +1098,18 @@ async function respond() {
     }
 
     // Stopped by the user. Thinking blocks from an unfinished turn can't be sent back,
-    // so keep just the text he'd written so far.
+    // so keep just the text written so far.
     if (partial) {
-        chat.messages.push({ role: 'assistant', content: [{ type: 'text', text: partial }], note: 'Stopped.' });
-        await save();
-        node.remove();
-        renderChat();
+        target.messages.push({ id: uid(), role: 'assistant', content: [{ type: 'text', text: partial }], note: 'Stopped.' });
+        await persist(target);
+        if (onScreen()) renderChat();
     } else {
-        view.content.innerHTML = '';
-        appendNotice(view.body, 'Stopped.', true);
-        markLast();
+        renderSidebar();
+        if (onScreen() && view) {
+            view.content.innerHTML = '';
+            appendNotice(view.body, 'Stopped.', true);
+            markLast();
+        }
     }
 }
 
@@ -986,12 +1133,28 @@ function accessAction(code, message) {
 
 // After the user adds a key or subscribes, answer the message that was waiting.
 acct.onAccessGranted(() => {
-    if (controller || !chat) return;
+    if (!chat || activeStream()) return;
     const lastMsg = chat.messages[chat.messages.length - 1];
     if (lastMsg?.role !== 'user') return;
     renderChat({ showUnanswered: false });
     respond();
 });
+
+acct.onDeleteAllChats(async () => {
+    for (const s of streams.values()) {
+        s.deleted = true;
+        s.controller.abort();
+    }
+    streams.clear();
+    if (sync.syncing()) await sync.removeAll();
+    for (const c of await store.allChats()) {
+        await store.deleteChat(c.id);
+        await store.deleteSync(c.id);
+    }
+    newChat();
+});
+
+// ---------- Account and sync ----------
 
 const accountBtn = $('account-btn');
 function renderAccountButton() {
@@ -1000,10 +1163,53 @@ function renderAccountButton() {
     accountBtn.querySelector('.account-name').textContent = name;
     accountBtn.querySelector('.account-status').textContent = acct.statusLine();
 }
-acct.onAccountChange(renderAccountButton);
 accountBtn.addEventListener('click', () => {
     closeSidebarOnMobile();
     acct.openAccount();
+});
+
+// Chats follow signed-in accounts. Signing in adopts this browser's guest chats; signing out
+// drops the synced chats from this browser (they stay in the account).
+let syncedUid = null;
+acct.onAccountChange(async (a) => {
+    renderAccountButton();
+    if (!a) return;
+    if (!a.isAnonymous && a.uid !== syncedUid) {
+        if (syncedUid) await leaveAccount();
+        syncedUid = a.uid;
+        await sync.start(a.uid);
+    } else if (a.isAnonymous && syncedUid) {
+        syncedUid = null;
+        await leaveAccount();
+    }
+});
+
+async function leaveAccount() {
+    for (const s of streams.values()) {
+        s.deleted = true;
+        s.controller.abort();
+    }
+    streams.clear();
+    await sync.stop();
+    newChat();
+}
+
+sync.configure({
+    isStreaming: (id) => streams.has(id),
+    onChange: async (ids) => {
+        renderSidebar();
+        if (!chat || streams.has(chat.id)) return;
+        if (ids.length && !ids.includes(chat.id)) return;
+        const fresh = await store.getChat(chat.id);
+        if (!fresh) {
+            if (chat.messages.length && ids.includes(chat.id)) newChat(); // deleted on another device
+            return;
+        }
+        if (ids.includes(chat.id)) {
+            chat = fresh;
+            renderChat();
+        }
+    },
 });
 
 // ---------- Boot ----------
@@ -1014,7 +1220,7 @@ try {
 
 renderAccountButton();
 acct.handleCheckoutReturn(toast);
-loadWelcome();
+setPersona(persona().id);
 
 const startId = location.hash.slice(1);
 if (startId) openChat(startId);

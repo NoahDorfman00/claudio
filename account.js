@@ -7,6 +7,7 @@ import {
     getAuth, connectAuthEmulator, onAuthStateChanged, signInAnonymously, signOut,
     GoogleAuthProvider, signInWithPopup, linkWithPopup, signInWithCredential,
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import { persona } from './personas.js';
 
 const firebaseConfig = {
     apiKey: 'AIzaSyDrKGKt6rdqPZnyD0cXYrDjbbVNhENqzhk',
@@ -17,7 +18,7 @@ const firebaseConfig = {
     appId: '1:573081656715:web:99dc011cd5697594bc238e',
 };
 
-const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
+export const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
 export const API_BASE = isLocal
     ? 'http://127.0.0.1:5001/claudio-13341/us-central1'
     : 'https://us-central1-claudio-13341.cloudfunctions.net';
@@ -26,6 +27,7 @@ const BROWSER_KEY_STORAGE = 'claudio.apiKey';
 const BROWSER_KEY_DAYS = 7;
 
 const app = initializeApp(firebaseConfig);
+export const firebaseApp = app;
 const auth = getAuth(app);
 if (isLocal) connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
 
@@ -41,6 +43,12 @@ export function onAccountChange(fn) {
 /** Called when the user unlocks more messages (key added, signed in to a paid account). */
 export function onAccessGranted(fn) {
     accessGranted = fn;
+}
+
+let deleteAllChats = async () => {};
+/** The app's handler for "Delete all my chats" (local copy, cloud copy, anything in flight). */
+export function onDeleteAllChats(fn) {
+    deleteAllChats = fn;
 }
 
 function emit() {
@@ -130,7 +138,7 @@ function setBrowserKey(key, hint) {
     try {
         localStorage.setItem(BROWSER_KEY_STORAGE, JSON.stringify({ key, hint, expiresAt }));
     } catch {
-        throw new Error('This browser won\'t let Claudio store anything. Sign in to save your key instead.');
+        throw new Error('This browser won\'t let us store anything. Sign in to save your key instead.');
     }
 }
 
@@ -267,7 +275,7 @@ export function openPaywall(message) {
         const regular = el('div', 'option');
         regular.append(
             text('h3', '', 'Become a regular'),
-            text('p', '', `Keep chatting with Claudio${price ? ` for ${price}` : ''}. Your monthly allowance covers a few hundred messages for most people. Cancel anytime.`),
+            text('p', '', `Keep chatting with ${persona().name}${price ? ` for ${price}` : ''}. Your monthly allowance covers a few hundred messages for most people. Cancel anytime.`),
             button('Subscribe', 'btn primary', () => {
                 close();
                 startCheckout();
@@ -407,7 +415,7 @@ export function openKeyDialog({ error } = {}) {
             <label class="choice"><input type="radio" name="where" value="account" ${signedIn ? 'checked' : ''}>
                 <span><b>Save to my account</b><small>Encrypted, works on any device you sign in on.${signedIn ? '' : ' You\'ll sign in with Google first.'}</small></span></label>
             <label class="choice"><input type="radio" name="where" value="browser" ${signedIn ? '' : 'checked'}>
-                <span><b>Keep in this browser for ${BROWSER_KEY_DAYS} days</b><small>Never stored on Claudio's server. Sent along with each message.</small></span></label>`;
+                <span><b>Keep in this browser for ${BROWSER_KEY_DAYS} days</b><small>Never stored on our server. Sent along with each message.</small></span></label>`;
 
         const err = errorLine();
         if (error) err.show(error);
@@ -536,7 +544,7 @@ export function openSignIn({ reason, then } = {}) {
         const err = errorLine();
         body.append(
             text('h2', 'dialog-title', 'Sign in'),
-            text('p', 'dialog-sub', reason || 'Sign in to save your API key or become a regular. Your chats stay on this device.'),
+            text('p', 'dialog-sub', reason || 'Sign in to keep your chats on every device, save your API key, or become a regular.'),
             googleButton(err, null, async () => {
                 close();
                 if (then) await then();
@@ -629,7 +637,7 @@ function renderAccount(body, close) {
         const err = errorLine();
         body.append(
             googleButton(err, null, async () => close()),
-            text('p', 'acct-hint', 'Sign in to save your key or become a regular. Your chats stay on this device.'),
+            text('p', 'acct-hint', 'Sign in to keep your chats on every device, save your key, or become a regular.'),
             err,
         );
     }
@@ -672,15 +680,49 @@ function renderAccount(body, close) {
         },
     ));
     body.append(rows);
+    body.append(text('p', 'acct-hint', signedIn
+        ? 'Your chats are saved to your account, so they follow you to any device you sign in on.'
+        : 'Your chats are saved in this browser only. Sign in to keep them with your account.'));
 
+    const foot = el('div', 'dialog-foot');
+    foot.append(button('Delete all chats', 'btn ghost danger', () => renderConfirmDeleteAll(body, close)));
+    foot.append(el('span', 'spacer'));
     if (signedIn) {
-        const foot = el('div', 'dialog-foot');
         foot.append(button('Sign out', 'btn ghost', async () => {
             close();
             await signOut(auth); // onAuthStateChanged starts a fresh guest session
         }));
-        body.append(foot);
     }
+    body.append(foot);
+}
+
+function renderConfirmDeleteAll(body, close) {
+    const signedIn = account && !account.isAnonymous;
+    body.replaceChildren(
+        text('h2', 'dialog-title', 'Delete all your chats?'),
+        text('p', 'dialog-sub', signedIn
+            ? 'This deletes every conversation from your account and from every device you\'re signed in on. It can\'t be undone.'
+            : 'This deletes every conversation saved in this browser. It can\'t be undone.'),
+    );
+    const err = errorLine();
+    const confirm = button('Delete everything', 'btn primary');
+    confirm.addEventListener('click', () => busy(confirm, async () => {
+        try {
+            await deleteAllChats();
+            close();
+        } catch (e) {
+            err.show(e.message || 'Couldn\'t delete everything. Try again.');
+        }
+    }));
+    const foot = el('div', 'dialog-foot');
+    foot.append(
+        button('Cancel', 'btn ghost', () => {
+            body.replaceChildren();
+            renderAccount(body, close);
+        }),
+        confirm,
+    );
+    body.append(err, foot);
 }
 
 // ---------- Returning from Stripe ----------

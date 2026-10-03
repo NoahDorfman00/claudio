@@ -23,9 +23,18 @@ Claudio is a full Claude chat app wearing a flat cap. He can code, write,
 explain, read images and PDFs, and search the web, the same as Claude can.
 The difference is the voice: Brooklyn, the kitchen, Nonna.
 
+**Two characters.** A toggle next to the name switches between Claudio (he
+runs the family red-sauce restaurant) and his cousin Claudia (she runs the
+family pastry shop in Bay Ridge). Each has her or his own system prompt,
+avatar, accent color and welcome messages (`personas.js`, `[data-persona]`
+in `styles.css`, `functions/prompt.js`). A conversation stays with whoever
+it started with: every chat records its character, the sidebar shows their
+avatar, and opening a chat switches the page to that character. Toggling in
+the middle of a conversation starts a new chat with the other one and keeps
+whatever you'd typed.
+
 **The page** is plain HTML, CSS and ES modules (`app.js`, `store.js`,
-`account.js`). No
-framework, no build step. It looks like a normal chat app: a sidebar of past
+`account.js`, `sync.js`, `personas.js`). No framework, no build step. It looks like a normal chat app: a sidebar of past
 chats, a thread, and a composer that takes attachments. Markdown is rendered
 with `marked` + `DOMPurify`, code is highlighted with `highlight.js`, all
 loaded from jsDelivr.
@@ -33,14 +42,22 @@ loaded from jsDelivr.
 **Replies stream.** The page `POST`s the conversation to one HTTP function,
 `claudioChat`, and reads back server-sent events as they arrive: thinking,
 text, a line each time he searches or reads a page, and the sources he cited.
-A stop button aborts the request mid-answer.
+A stop button aborts the request mid-answer. Replies belong to their chat,
+not the screen: switch chats or characters mid-reply and it keeps streaming
+in the background and saves when it's done; go back while it's still going
+and the chat catches up and continues live.
 
-**Conversations are saved in the browser** (IndexedDB), so a refresh doesn't
-wipe Claudio's memory of you, but nothing is stored on a server. Each
-assistant turn is kept as the raw content blocks the API returned (thinking,
-search results, citations) and sent back unchanged on the next turn. Editing
-a message or regenerating an answer cuts the conversation at that point and
-continues from there, so earlier turns are never rewritten.
+**Conversations** are kept in the browser (IndexedDB) and, for signed-in
+users, in Firestore so they follow the account to other devices
+(`sync.js`). Guests' chats stay in the browser; signing in adopts them into
+the account, and signing out removes the synced copies from that browser.
+Each message is its own Firestore document (`users/{uid}/chats/{id}/messages`),
+and one too big for a document (a large image, a long fetched page) goes to
+Cloud Storage instead. Each assistant turn is kept as the raw content blocks
+the API returned (thinking, search results, citations) and sent back
+unchanged on the next turn. Editing a message or regenerating an answer cuts
+the conversation at that point and continues from there, so earlier turns
+are never rewritten; the cut messages are deleted from the cloud too.
 
 **The function** (`functions/index.js`) is a Firebase Functions v2
 `onRequest` handler on Node 22. It reads the Anthropic key from a Firebase
@@ -97,23 +114,24 @@ portal for cancelling, card updates and invoices. `stripeWebhook` keeps
 and `customer.subscription.created/updated/deleted`. Firestore rules deny
 all client access; the browser gets what it needs from `GET /api/account`.
 
-**The prompt** (`functions/prompt.js`) keeps Claudio's backstory (Sicilian
-grandparents, Brooklyn, the family restaurant) and tells the model to keep
-the voice in the framing: kitchen metaphors, a little Brooklyn Italian, "let
-me check with a guy" before a web search. The answer itself has to be as good
-as Claude's. Code stays clean, facts stay facts, and he drops the bit when
-someone is going through something hard or asks him to.
+**The prompts** (`functions/prompt.js`) give each character a backstory and a
+voice: Claudio with Sicilian grandparents, the restaurant and kitchen
+metaphors ("let me check with a guy" before a web search); Claudia with
+Calabrian grandparents, the pasticceria and baking metaphors ("good code is
+laminated dough"). They share the rest: the answer has to be as good as
+Claude's, code stays clean, facts stay facts, and the bit drops when someone
+is going through something hard or asks for it to.
 
 ## Stack
 
 | Piece | What |
 |---|---|
-| Frontend | Static `index.html` + `styles.css` + `app.js` + `store.js` + `account.js`; Spectral and JetBrains Mono from Google Fonts; marked, DOMPurify and highlight.js from jsDelivr; Firebase Auth JS SDK 12 from gstatic |
+| Frontend | Static `index.html` + `styles.css` + `app.js` + `store.js` + `account.js` + `sync.js` + `personas.js`; Spectral and JetBrains Mono from Google Fonts; marked, DOMPurify and highlight.js from jsDelivr; Firebase Auth, Firestore and Storage JS SDK 12 from gstatic |
 | Hosting | GitHub Pages from the root of `main`, with a custom domain (`CNAME`) |
 | Backend | Firebase Functions v2 (`onRequest`), Node 22: `claudioChat` (streaming SSE), `api` (account, keys, checkout, portal), `stripeWebhook` |
 | Model | Claude Sonnet 5.5 with adaptive thinking, web search and web fetch |
 | Auth | Firebase Auth: anonymous for guests, Google to sign in |
-| Storage | Chats in the browser's IndexedDB. Firestore holds only trial usage, subscription status, encrypted keys and the day's welcome messages |
+| Storage | Chats in IndexedDB, mirrored to Firestore (and Cloud Storage for big messages) for signed-in users. Firestore also holds trial usage, subscription status, encrypted keys and the day's welcome messages, which only the functions can touch |
 | Billing | Stripe Checkout + customer portal + webhook |
 | Secrets | `ANTHROPIC_API_KEY`, `ANTHROPIC_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` |
 
@@ -151,7 +169,8 @@ You'll need the Firebase CLI and a Firebase project of your own.
    firebase emulators:start
    ```
    Open the page at `http://localhost:5002`. On `localhost` the page talks
-   to the Functions emulator (port 5001) and the Auth emulator (port 9099).
+   to the Functions (5001), Auth (9099), Firestore (8080) and Storage (9199)
+   emulators.
    The emulator UI at `http://localhost:4000` shows users and Firestore
    docs, which is handy for resetting a trial.
 
@@ -162,8 +181,10 @@ One-time setup in the Firebase console:
 - **Authentication:** enable the Anonymous and Google
   providers, and add `claudio.noahgdorfman.com` under Settings → Authorized
   domains.
-- **Firestore:** create the database (production mode is fine; the rules
-  deny all client access anyway).
+- **Firestore:** create the database (production mode is fine;
+  `firestore.rules` only lets signed-in users at their own chats).
+- **Storage:** turn it on (`storage.rules` limits it to each user's own
+  chat files).
 
 One-time setup in Stripe:
 
@@ -182,7 +203,7 @@ openssl rand -base64 32 | firebase functions:secrets:set ANTHROPIC_KEY_ENCRYPTIO
 firebase functions:secrets:set STRIPE_SECRET_KEY
 firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
 firebase functions:secrets:set STRIPE_PRICE_ID
-firebase deploy --only functions,firestore:rules
+firebase deploy --only functions,firestore:rules,storage
 ```
 
 Don't rotate `ANTHROPIC_KEY_ENCRYPTION_KEY` casually: saved keys encrypted
@@ -224,14 +245,18 @@ twenty seconds.
 index.html        the chat page (static, no build step)
 app.js            client: streaming, rendering, attachments, edit/regenerate
 account.js        client: Firebase Auth, trial status, paywall/key/sign-in/account dialogs
-store.js          saved chats in IndexedDB
-styles.css        layout, light/dark themes
-assets/           Claudio portrait + small avatar, logo, social card
+personas.js       client: the two characters (name, avatar, theme, fallback welcome)
+sync.js           client: mirrors signed-in users' chats to Firestore and Storage
+store.js          chats and sync bookkeeping in IndexedDB
+styles.css        layout, light/dark themes, Claudia's palette
+assets/           Claudio portrait + small avatar, Claudia avatar (SVG), logo, social card
 functions/        index.js (claudioChat, api, stripeWebhook), access.js (who pays),
-                  keyCrypto.js (saved-key encryption), prompt.js (Claudio)
-firestore.rules   deny-all; only the functions touch Firestore
+                  keyCrypto.js (saved-key encryption), prompt.js (both characters),
+                  welcome.js (daily welcome messages)
+firestore.rules   users read/write only their own chats; the rest is functions-only
+storage.rules     users read/write only their own chat files
 example.txt       a raw API response with web search, kept from debugging v1
-firebase.json     Functions + Firestore rules config, emulator ports
+firebase.json     Functions, Firestore and Storage rules config, emulator ports
 CNAME             custom domain for GitHub Pages
 ```
 

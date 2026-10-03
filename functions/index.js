@@ -2,7 +2,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const Anthropic = require('@anthropic-ai/sdk');
 const Stripe = require('stripe');
-const { SYSTEM_PROMPT } = require('./prompt');
+const { systemPromptFor, PERSONAS } = require('./prompt');
 const { encryptApiKey, apiKeyHint } = require('./keyCrypto');
 const { getWelcome } = require('./welcome');
 const {
@@ -36,12 +36,12 @@ const TOOLS = [
 // "high" is the "think it through" toggle in the UI.
 const EFFORTS = new Set(['low', 'high']);
 
-function systemPrompt() {
+function systemPrompt(persona) {
     const today = new Date().toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York',
     });
     return [
-        { type: 'text', text: SYSTEM_PROMPT },
+        { type: 'text', text: systemPromptFor(persona) },
         { type: 'text', text: `Today's date is ${today}.` },
     ];
 }
@@ -96,6 +96,7 @@ exports.claudioChat = onRequest(
         }
 
         const { messages, effort = 'low', apiKey: browserKey } = req.body || {};
+        const persona = PERSONAS.includes(req.body?.persona) ? req.body.persona : 'claudio';
         const problem = validateMessages(messages);
         if (problem) {
             res.status(400).json({ error: problem });
@@ -173,7 +174,7 @@ exports.claudioChat = onRequest(
                 stream = client.beta.messages.stream({
                     model: MODEL,
                     max_tokens: MAX_TOKENS,
-                    system: systemPrompt(),
+                    system: systemPrompt(persona),
                     messages: history,
                     tools: TOOLS,
                     thinking: { type: 'adaptive', display: 'summarized' },
@@ -340,7 +341,8 @@ exports.api = onRequest(
             // The welcome screen loads before sign-in finishes, so it needs no token.
             if (req.method === 'GET' && req.path.replace(/\/+$/, '') === '/welcome') {
                 res.set('Cache-Control', 'no-store');
-                res.json({ welcome: await getWelcome(ANTHROPIC_API_KEY.value()) });
+                const persona = PERSONAS.includes(req.query?.persona) ? req.query.persona : 'claudio';
+                res.json({ welcome: await getWelcome(ANTHROPIC_API_KEY.value(), persona) });
                 return;
             }
 

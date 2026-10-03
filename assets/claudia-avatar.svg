@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Claudia: flat portrait in the same palette and ink style as Claudio's -->
+  <defs>
+    <clipPath id="frame"><rect width="256" height="256"/></clipPath>
+  </defs>
+  <g clip-path="url(#frame)" stroke="#1b1716" stroke-linecap="round" stroke-linejoin="round">
+    <!-- background -->
+    <rect width="256" height="256" fill="#f2dcd2" stroke="none"/>
+    <path d="M150 0 L256 0 L256 256 L200 256 Z" fill="#b84a62" stroke="none"/>
+    <circle cx="38" cy="58" r="30" fill="#e9b8a8" stroke="none"/>
+    <circle cx="24" cy="128" r="22" fill="#e9b8a8" stroke="none"/>
+    <circle cx="226" cy="40" r="18" fill="#d27a8c" stroke="none"/>
+
+    <!-- hair, back -->
+    <path d="M64 120 C58 70 92 34 132 34 C176 34 204 70 196 124 C194 150 200 176 214 196 L52 196 C62 170 66 146 64 120 Z" fill="#1b1716" stroke-width="5"/>
+    <!-- bun -->
+    <circle cx="132" cy="30" r="24" fill="#1b1716" stroke-width="5"/>
+
+    <!-- shoulders / top -->
+    <path d="M30 256 C34 214 70 196 104 190 L152 190 C188 196 222 214 226 256 Z" fill="#1b1716" stroke-width="5"/>
+    <path d="M104 190 L128 226 L152 190" fill="#f6e6d8" stroke-width="5"/>
+    <!-- neck -->
+    <path d="M110 160 L110 192 C118 204 138 204 146 192 L146 160" fill="#f6e6d8" stroke-width="5"/>
+
+    <!-- face -->
+    <path d="M84 104 C84 70 104 56 130 56 C158 56 176 72 176 106 C176 146 156 176 130 176 C104 176 84 146 84 104 Z" fill="#f6e6d8" stroke-width="5"/>
+
+    <!-- hair, front sweep -->
+    <path d="M82 104 C84 66 110 50 134 52 C162 54 180 74 178 104 C166 84 146 74 124 72 C108 74 94 84 82 104 Z" fill="#1b1716" stroke-width="5"/>
+
+    <!-- brows -->
+    <path d="M100 100 C108 94 118 94 124 98" fill="none" stroke-width="6"/>
+    <path d="M140 98 C148 93 158 94 164 100" fill="none" stroke-width="6"/>
+    <!-- eyes -->
+    <path d="M102 114 C108 108 118 108 122 114" fill="none" stroke-width="4.5"/>
+    <path d="M142 114 C147 108 157 108 162 114" fill="none" stroke-width="4.5"/>
+    <circle cx="112" cy="115" r="3.5" fill="#1b1716" stroke="none"/>
+    <circle cx="152" cy="115" r="3.5" fill="#1b1716" stroke="none"/>
+    <!-- nose -->
+    <path d="M132 118 C130 130 126 138 128 142 C132 144 136 143 138 141" fill="none" stroke-width="4"/>
+    <!-- lips -->
+    <path d="M114 154 C122 150 128 152 132 154 C136 152 142 150 150 154 C144 164 120 164 114 154 Z" fill="#b84a62" stroke-width="4"/>
+    <!-- cheeks -->
+    <circle cx="104" cy="138" r="7" fill="#e9a99a" stroke="none" opacity="0.7"/>
+    <circle cx="160" cy="138" r="7" fill="#e9a99a" stroke="none" opacity="0.7"/>
+
+    <!-- hoop earrings -->
+    <circle cx="84" cy="136" r="10" fill="none" stroke="#c99a2e" stroke-width="5"/>
+    <circle cx="176" cy="136" r="10" fill="none" stroke="#c99a2e" stroke-width="5"/>
+  </g>
+</svg>
